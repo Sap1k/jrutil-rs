@@ -207,10 +207,20 @@ fn jdf_r007_gapfill_catalogue_positions_are_reviewed_corrections() {
         .iter()
         .map(|c| &*c.observation)
         .collect();
-    assert_eq!(
-        observations,
-        ["external:gapfill.csv:1", "external:manual.csv:1"]
-    );
+    // JDF-R007: F#'s identity, a hash of the relative path and the five columns.
+    let id = |path: &str, lat: &str, lon: &str| {
+        let row = format!("{path}|Exact,stop|{lat}|{lon}|AA|CZ");
+        format!(
+            "external:{path}:sha256:{}",
+            jr_formats::post_evidence::ids::sha256_hex(row.as_bytes())
+        )
+    };
+    let mut expected = [
+        id("gapfill.csv", "50.15", "14.25"),
+        id("manual.csv", "50.1501", "14.2501"),
+    ];
+    expected.sort();
+    assert_eq!(observations, expected);
 }
 
 #[test]

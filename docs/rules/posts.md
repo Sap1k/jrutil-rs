@@ -2389,3 +2389,18 @@ Rules the Rust evaluator and pack reader (`jr_posts::evaluate`, `jr_formats::pos
 - **Pinned by:** `post_r041_identical_trips_share_their_contexts` (contexts per pattern).
 - **Constants:** none.
 - **Diagnostic:** none.
+
+#### POST-R191 — An anchor tie goes to the point nearest the stop
+- **What:** when route points tie as the medoid of a stop's anchor (R045; two points always
+  tie), the anchor is the point nearest the stop's precise position (the position stop matching
+  chose), then the one with the smaller latitude, then the smaller longitude.
+- **Where:** `jr_posts::capture::observations::anchor`.
+- **Why:** F# broke the tie by the ordinal order of route-point IDs, a hash of its own
+  EPSG:3035 round trip of the coordinate's text: an accident of identity. The candidate nearest
+  the stop's own position is the best guess of where vehicles stand. The choice differs from
+  F#'s at about half of the two-point stops. Route-point IDs hash the coordinate's shortest
+  round-trip text and differ from F#'s (verdict Q1); the evaluator still breaks its own ties
+  (hypothesis medoids, R072) by route-point ID, unchanged, as proven on F#'s packs.
+- **Pinned by:** `post_r191_an_anchor_tie_goes_to_the_point_nearest_the_stop_then_south_then_west`.
+- **Constants:** none.
+- **Diagnostic:** none.

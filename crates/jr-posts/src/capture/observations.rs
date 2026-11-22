@@ -69,9 +69,10 @@ fn modes<'a>(values: impl Iterator<Item = &'a str>) -> String {
     tokens.join(";")
 }
 
-/// R031: `route-point:` + `sha("{stop}|{lat}|{lon}")` with the coordinates' shortest
-/// round-trip text (F# used the source's decimal text; equal for the usual six decimals
-/// without trailing zeros).
+/// R031: `route-point:` + `sha("{stop}|{lat}|{lon}")` with the coordinate as the source gives
+/// it, in the shortest text that reads back as the same `f64`; equal coordinates, equal ID.
+/// F# hashed the text of its own EPSG:3035 round trip of the coordinate, so the IDs differ
+/// from F#'s (verdict Q1: the pack is format-compatible, not identical).
 pub(crate) fn route_point_id(stop: u64, coord: Coord) -> String {
     stable_id(
         "route-point:",
@@ -81,6 +82,37 @@ pub(crate) fn route_point_id(stop: u64, coord: Coord) -> String {
             &coord.lon.to_string(),
         ],
     )
+}
+
+/// R045 with POST-R191: the anchor of a stop's route points `rows`: the medoid (least sum of
+/// squared distances); on a tie the point nearest the stop's precise position; then the
+/// smaller latitude, then the smaller longitude.
+pub(crate) fn anchor(
+    constants: &Constants,
+    points: &RoutePoints,
+    rows: std::ops::Range<usize>,
+    precise: Option<Coord>,
+) -> Coord {
+    let coord = |row: usize| Coord::new(points.longitude[row], points.latitude[row]);
+    let key = |row: usize| {
+        let sum: f64 = rows
+            .clone()
+            .map(|other| distance_squared(constants, coord(row), coord(other)))
+            .sum();
+        let near = precise.map_or(0.0, |stop| distance_squared(constants, coord(row), stop));
+        (sum, near, points.latitude[row], points.longitude[row])
+    };
+    let best = rows
+        .clone()
+        .min_by(|&a, &b| {
+            let (ka, kb) = (key(a), key(b));
+            ka.0.total_cmp(&kb.0)
+                .then(ka.1.total_cmp(&kb.1))
+                .then(ka.2.total_cmp(&kb.2))
+                .then(ka.3.total_cmp(&kb.3))
+        })
+        .unwrap_or(rows.start);
+    coord(best)
 }
 
 /// R030–R033 and the anchors.
@@ -175,23 +207,58 @@ pub(crate) fn admit(facts: &PostFacts, constants: &Constants) -> Admitted {
             table.lifecycle.push(fact(candidate, "lifecycle").into());
         }
         let range = first..admitted.route_points.len();
-        // R045: the medoid of the route points (least sum of squared distances, then id).
-        let points = &admitted.route_points;
-        let coord = |row: usize| Coord::new(points.longitude[row], points.latitude[row]);
-        let mut medoid = range.start;
-        let mut best = f64::INFINITY;
-        for candidate in range.clone() {
-            let mut sum = 0.0;
-            for other in range.clone() {
-                sum += distance_squared(constants, coord(candidate), coord(other));
-            }
-            if sum < best {
-                best = sum;
-                medoid = candidate;
-            }
-        }
-        admitted.anchors.insert(stop.number, coord(medoid));
+        let anchor = anchor(
+            constants,
+            &admitted.route_points,
+            range.clone(),
+            Some(precise),
+        );
+        admitted.anchors.insert(stop.number, anchor);
         admitted.points.insert(stop.number, range);
     }
     admitted
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn points(coords: &[(f64, f64)]) -> RoutePoints {
+        let mut points = RoutePoints::default();
+        for &(lat, lon) in coords {
+            points.latitude.push(lat);
+            points.longitude.push(lon);
+        }
+        points
+    }
+
+    #[test]
+    fn post_r191_an_anchor_tie_goes_to_the_point_nearest_the_stop_then_south_then_west() {
+        let constants = Constants::builtin();
+        // Two points always tie as the medoid.
+        let pair = points(&[(50.0001, 14.0), (50.0, 14.0)]);
+        let north = Coord::new(14.0, 50.0001);
+        let south = Coord::new(14.0, 50.0);
+        assert_eq!(
+            anchor(&constants, &pair, 0..2, Some(Coord::new(14.0, 50.00009))),
+            north
+        );
+        assert_eq!(
+            anchor(&constants, &pair, 0..2, Some(Coord::new(14.0, 49.9))),
+            south
+        );
+        assert_eq!(
+            anchor(&constants, &pair, 0..2, None),
+            south,
+            "the smaller latitude"
+        );
+        let row = points(&[(50.0, 14.0001), (50.0, 14.0)]);
+        assert_eq!(anchor(&constants, &row, 0..2, None), Coord::new(14.0, 50.0));
+        // A clear medoid wins whatever the stop's position.
+        let three = points(&[(50.0, 14.0), (50.0001, 14.0), (50.0002, 14.0)]);
+        assert_eq!(
+            anchor(&constants, &three, 0..3, Some(Coord::new(14.0, 50.0))),
+            Coord::new(14.0, 50.0001)
+        );
+    }
 }

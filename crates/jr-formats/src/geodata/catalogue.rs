@@ -21,6 +21,9 @@ pub struct Row {
     pub country: Option<Box<str>>,
     /// The 1-based line the row starts on.
     pub line: u64,
+    /// The five columns' text verbatim (unquoted): the row's identity is a hash of them
+    /// (JDF-R007).
+    pub columns: [Box<str>; 5],
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -60,6 +63,7 @@ pub fn parse(csv: &[u8]) -> Result<Vec<Row>, CatalogueError> {
             okres: verbatim(3),
             country: verbatim(4),
             line,
+            columns: [0, 1, 2, 3, 4].map(|index| Box::from(&record[index])),
         });
     }
     Ok(rows)

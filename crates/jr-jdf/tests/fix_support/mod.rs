@@ -269,6 +269,13 @@ pub fn row(
         okres: okres.map(Into::into),
         country: country.map(Into::into),
         line: 1,
+        columns: [
+            name.into(),
+            lat.to_string().into(),
+            lon.to_string().into(),
+            okres.unwrap_or("").into(),
+            country.unwrap_or("").into(),
+        ],
     }
 }
 

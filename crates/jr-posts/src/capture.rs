@@ -43,7 +43,9 @@ pub const POST_R030: Rule = Rule {
 };
 
 /// Admitted observations at one coordinate of a stop form a route point,
-/// `route-point:sha(stop|lat|lon)`; a stop's route points are ordered by that ID.
+/// `route-point:sha(stop|lat|lon)` of the coordinate's shortest round-trip text; a stop's
+/// route points are ordered by that ID. F# hashed the text of its own EPSG:3035 round trip of
+/// the coordinate, so the IDs differ from F#'s (verdict Q1).
 ///
 /// One physical post is often observed twice at exactly one coordinate.
 pub const POST_R031: Rule = Rule {
@@ -173,10 +175,23 @@ pub const POST_R190: Rule = Rule {
     summary: "route distinction = ordinal among the licence's surviving versions",
 };
 
+/// When two or more route points tie as the medoid of a stop's anchor (R045; with two points
+/// they always do), the anchor is the one nearest the stop's precise position, then the one
+/// with the smaller latitude, then the smaller longitude. F# broke the tie by a hash of the
+/// coordinate's text, an accident of identity; the choice differs from F#'s at about half of
+/// the two-point stops.
+///
+/// The position stop matching chose is the best single statement of where the stop is; the
+/// candidate nearest it is the best guess of where vehicles stand.
+pub const POST_R191: Rule = Rule {
+    id: "POST-R191",
+    summary: "an anchor tie goes to the point nearest the stop, then south, then west",
+};
+
 /// The capture's rules.
 pub const RULES: &[Rule] = &[
     POST_R030, POST_R031, POST_R032, POST_R033, POST_R040, POST_R041, POST_R042, POST_R043,
-    POST_R044, POST_R045, POST_R046, POST_R054, POST_R055, POST_R057, POST_R190,
+    POST_R044, POST_R045, POST_R046, POST_R054, POST_R055, POST_R057, POST_R190, POST_R191,
 ];
 
 /// What the capture reads.

@@ -57,8 +57,9 @@ pub(crate) struct Entry {
     pub class: SourceClass,
     /// The source label F# wrote to `PolzastZdroj` (`external:{file stem}`, `osm:node:{id}`).
     pub source: Box<str>,
-    /// The observation's identity, stable between builds (`external:{path}:{line}`,
-    /// `osm:node:{id}`).
+    /// The observation's identity, stable between builds: `osm:node:{id}`, or for a catalogue
+    /// row F#'s `external:{path}:sha256:{sha(path|the five columns joined |)}` (JDF-R007), so
+    /// the post estimator's hypothesis IDs equal F#'s.
     pub observation: Box<str>,
     /// R013: what the post estimator reads.
     pub facts: Vec<(Box<str>, Box<str>)>,
@@ -382,7 +383,11 @@ fn catalogue_entries(
                 coord,
                 class,
                 source: source.clone(),
-                observation: format!("{}{path}:{}", file.catalogues.source_prefix, row.line).into(),
+                observation: catalogue_observation(
+                    &file.catalogues.source_prefix,
+                    path,
+                    &row.columns,
+                ),
                 facts: vec![
                     ("source_kind".into(), "external".into()),
                     ("lifecycle".into(), file.osm.post_evidence.active.clone()),
@@ -411,4 +416,13 @@ fn catalogue_entries(
         .rule(R007),
     );
     entries
+}
+
+/// JDF-R007: F#'s identity of a catalogue row,
+/// `external:{path}:sha256:{sha(path|the five columns joined |)}`.
+fn catalogue_observation(prefix: &str, path: &str, columns: &[Box<str>; 5]) -> Box<str> {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(format!("{path}|{}", columns.join("|")).as_bytes());
+    let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+    format!("{prefix}{path}:sha256:{hex}").into()
 }
