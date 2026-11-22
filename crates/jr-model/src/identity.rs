@@ -352,6 +352,84 @@ pub mod jdf {
     }
 }
 
+/// The regional overlay's scheme (`docs/rules/overlay.md`, section 4, verdict Q5): what a
+/// regional feed adds to a national timetable. Posts, stop places, routes and agencies are
+/// named after the source's own identifiers, in the form the published IDs and the reviewed
+/// registry already use (a hash of the identifier, since source identifiers are long and not
+/// ours to print). A date slice of a national trip and a trip a source adds are named after the
+/// dates they run on.
+pub mod overlay {
+    use sha2::{Digest, Sha256};
+
+    use super::PublicId;
+    use crate::DateSet;
+
+    /// The separator the scheme has always put between the parts of a hashed text.
+    const UNIT: char = '\u{1f}';
+
+    fn hex(digest: &[u8], characters: usize) -> String {
+        let text: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+        text[..characters].to_owned()
+    }
+
+    fn sha(text: &str, characters: usize) -> String {
+        hex(&Sha256::digest(text.as_bytes()), characters)
+    }
+
+    fn named(source: &str, kind: &str, hash: String) -> PublicId {
+        PublicId(format!("overlay:{source}:{kind}:{hash}").into_boxed_str())
+    }
+
+    /// The part of a national trip that runs on `dates`, where the trip runs differently on
+    /// its other days.
+    pub fn slice(trip: &PublicId, dates: &DateSet) -> PublicId {
+        let hash = hex(&Sha256::digest(dates.to_bytes()), 12);
+        PublicId(format!("{trip}:overlay:{hash}").into_boxed_str())
+    }
+
+    /// A trip only the source has, running on `dates`.
+    pub fn added_trip(source: &str, source_trip: &str, dates: &DateSet) -> PublicId {
+        let mut hasher = Sha256::new();
+        hasher.update(source.as_bytes());
+        hasher.update([0x1f]);
+        hasher.update(source_trip.as_bytes());
+        hasher.update([0x1f]);
+        hasher.update(dates.to_bytes());
+        named(source, "trip", hex(&hasher.finalize(), 20))
+    }
+
+    /// A boarding point the source describes, named after the source's stop.
+    pub fn post(source: &str, source_stop: &str) -> PublicId {
+        named(source, "post", sha(source_stop, 16))
+    }
+
+    /// One boarding point that several sources describe at one place under one platform code
+    /// (`platform` trimmed and upper-cased by the caller).
+    pub fn shared_post(place: &PublicId, platform: &str) -> PublicId {
+        named(
+            "regional-all",
+            "post",
+            sha(&format!("{place}{UNIT}{platform}"), 16),
+        )
+    }
+
+    /// A stop place only the source has, named after its stop group's key. The reviewed
+    /// registry pins such places by that key and may give them another ID.
+    pub fn stop_place(source: &str, group_key: &str) -> PublicId {
+        named(source, "stop-place", sha(group_key, 16))
+    }
+
+    /// A route the source runs in its own mode or on its own: `line` is the national line it
+    /// belongs to, or what stands for one when there is none.
+    pub fn route(source: &str, source_route: &str, line: &str) -> PublicId {
+        named(source, "route", sha(&format!("{source_route}|{line}"), 16))
+    }
+
+    pub fn agency(source: &str, source_agency: &str) -> PublicId {
+        named(source, "agency", sha(source_agency, 16))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

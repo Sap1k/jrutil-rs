@@ -21,8 +21,9 @@ use crate::handle::{
     AgencyId, BoardingPointId, Handle, NoteId, PlaceId, RouteId, RouteStopId, ServiceId, ShapeId,
     Sym, TripId,
 };
+use crate::identity::PublicId;
 use crate::timetable::{
-    Agency, Assignment, BoardingPoint, CallKey, ConnectionClaim, CoordSource, Note, Place,
+    Agency, Assignment, BoardingPoint, Call, CallKey, ConnectionClaim, CoordSource, Note, Place,
     Position, Precision, Restriction, RestrictionScope, Route, RouteStop, Scope, Shape, SourceKey,
     Target, Timetable, Transfer, Trip, TripShape, Violation,
 };
@@ -65,6 +66,37 @@ pub enum Edit {
         short_name: Option<Box<str>>,
         color: Option<Box<str>>,
         text_color: Option<Box<str>>,
+    },
+    /// A copy of a trip under a new ID and with its own days, the original left as it is: a
+    /// trip that runs differently on some of its days is split, and each part then edited.
+    /// Everything stated for the trip is stated for the copy too: its calls and shape, the
+    /// notes and features assigned to it or its calls, its connection claims, travel
+    /// restrictions, keys, call keys and transfers. Built with [`EditBuilder::split_trip`],
+    /// which hands out the copy's handle.
+    SplitTrip {
+        trip: TripId,
+        id: PublicId,
+        service: ServiceId,
+    },
+    /// Replaces a trip's calls. `kept` maps the published sequence of each call that continues
+    /// to its new sequence; what was stated for a call (connection claims, travel
+    /// restrictions, call keys, notes and features) follows it there, and what was stated for
+    /// a call that does not continue goes with it. The calls' route-stop slots are the
+    /// caller's to carry over; the trip's shape is detached, since its offsets were per call.
+    ReplaceTripCalls {
+        trip: TripId,
+        calls: Vec<Call>,
+        kept: Vec<(i32, i32)>,
+    },
+    /// Moves a trip to another route. Its calls lose their route-stop slots, which belong to
+    /// the route's stop list (the list is derived again afterwards).
+    SetTripRoute {
+        trip: TripId,
+        route: RouteId,
+    },
+    SetTripHeadsign {
+        trip: TripId,
+        headsign: Option<Sym>,
     },
     /// Removes calls of a trip, named by their published sequences; the other calls keep
     /// theirs. What was stated for a removed call goes with it: connection claims made at it,
@@ -225,6 +257,7 @@ impl<'a> EditBuilder<'a> {
                     | Edit::AddBoardingPoint(_)
                     | Edit::AddRoute(_)
                     | Edit::AddTrip(_)
+                    | Edit::SplitTrip { .. }
                     | Edit::AddShape(_)
                     | Edit::AddNote(_)
             ),
@@ -276,6 +309,24 @@ impl<'a> EditBuilder<'a> {
             .items
             .push((Cow::Borrowed(rule.id), Edit::AddTrip(trip)));
         id
+    }
+
+    /// A copy of `trip` under `id` running on `service` ([`Edit::SplitTrip`]); returns the
+    /// copy's handle.
+    pub fn split_trip(
+        &mut self,
+        rule: Rule,
+        trip: TripId,
+        id: PublicId,
+        service: ServiceId,
+    ) -> TripId {
+        let copy = TripId::from_index(self.added.trips);
+        self.added.trips += 1;
+        self.edits.items.push((
+            Cow::Borrowed(rule.id),
+            Edit::SplitTrip { trip, id, service },
+        ));
+        copy
     }
 
     pub fn add_note(&mut self, rule: Rule, note: Note) -> NoteId {
@@ -474,6 +525,212 @@ fn apply_one(
                 row.text_color = text_color;
             }
             Target::Route(route)
+        }
+        Edit::SplitTrip { trip, id, service } => {
+            let mut copy = timetable.trips.get(trip).ok_or("unknown trip")?.clone();
+            copy.id = id;
+            copy.service = service;
+            let new = timetable.trips.push(copy);
+            let same = |on: TripId| on == trip;
+            let assigned: Vec<Assignment> = timetable
+                .assignments
+                .iter()
+                .filter_map(|assignment| {
+                    let scope = match assignment.scope {
+                        Scope::Trip(on) if same(on) => Scope::Trip(new),
+                        Scope::Call { trip: on, sequence } if same(on) => Scope::Call {
+                            trip: new,
+                            sequence,
+                        },
+                        Scope::CallRange { trip: on, from, to } if same(on) => Scope::CallRange {
+                            trip: new,
+                            from,
+                            to,
+                        },
+                        _ => return None,
+                    };
+                    Some(Assignment {
+                        scope,
+                        ..assignment.clone()
+                    })
+                })
+                .collect();
+            timetable.assignments.extend(assigned);
+            let claims: Vec<ConnectionClaim> = timetable
+                .connection_claims
+                .iter()
+                .filter(|claim| same(claim.origin_trip))
+                .map(|claim| ConnectionClaim {
+                    origin_trip: new,
+                    ..claim.clone()
+                })
+                .collect();
+            timetable.connection_claims.extend(claims);
+            let mut restrictions = Vec::new();
+            for restriction in &mut timetable.restrictions {
+                match &mut restriction.scope {
+                    RestrictionScope::Call { trip: on, sequence } if same(*on) => {
+                        restrictions.push(Restriction {
+                            scope: RestrictionScope::Call {
+                                trip: new,
+                                sequence: *sequence,
+                            },
+                            ..restriction.clone()
+                        });
+                    }
+                    RestrictionScope::RouteStop { calls, .. } => {
+                        let mut all = calls.to_vec();
+                        let copies: Vec<_> = all
+                            .iter()
+                            .filter(|(on, _)| same(*on))
+                            .map(|&(_, sequence)| (new, sequence))
+                            .collect();
+                        if !copies.is_empty() {
+                            all.extend(copies);
+                            *calls = all.into_boxed_slice();
+                        }
+                    }
+                    RestrictionScope::Call { .. } => {}
+                }
+            }
+            timetable.restrictions.extend(restrictions);
+            let keys: Vec<SourceKey> = timetable
+                .keys
+                .iter()
+                .filter(|key| key.entity == crate::timetable::Entity::Trip(trip))
+                .map(|key| SourceKey {
+                    entity: crate::timetable::Entity::Trip(new),
+                    ..key.clone()
+                })
+                .collect();
+            timetable.keys.extend(keys);
+            let call_keys: Vec<CallKey> = timetable
+                .call_keys
+                .iter()
+                .filter(|key| same(key.trip))
+                .map(|key| CallKey {
+                    trip: new,
+                    ..key.clone()
+                })
+                .collect();
+            timetable.call_keys.extend(call_keys);
+            // A transfer between two trips that are both split ends up between every pair of
+            // their parts.
+            let transfers: Vec<Transfer> = timetable
+                .transfers
+                .iter()
+                .filter(|transfer| {
+                    transfer.from_trip.is_some_and(same) || transfer.to_trip.is_some_and(same)
+                })
+                .map(|transfer| {
+                    let moved = |end: Option<TripId>| end.map(|on| if same(on) { new } else { on });
+                    Transfer {
+                        from_trip: moved(transfer.from_trip),
+                        to_trip: moved(transfer.to_trip),
+                        ..transfer.clone()
+                    }
+                })
+                .collect();
+            timetable.transfers.extend(transfers);
+            Target::Trip(new)
+        }
+        Edit::ReplaceTripCalls { trip, calls, kept } => {
+            let row = timetable.trips.get_mut(trip).ok_or("unknown trip")?;
+            let old = |sequence: i32| row.calls.iter().any(|call| call.sequence == sequence);
+            let new = |sequence: i32| calls.iter().any(|call| call.sequence == sequence);
+            if !kept.iter().all(|&(from, to)| old(from) && new(to)) {
+                return Err(format!("{}: a kept call does not exist", row.id));
+            }
+            row.calls = calls;
+            row.shape = None;
+            let moved = |sequence: i32| {
+                kept.iter()
+                    .find(|(from, _)| *from == sequence)
+                    .map(|&(_, to)| to)
+            };
+            timetable.connection_claims.retain_mut(|claim| {
+                if claim.origin_trip != trip {
+                    return true;
+                }
+                moved(claim.origin_sequence).is_some_and(|to| {
+                    claim.origin_sequence = to;
+                    true
+                })
+            });
+            timetable
+                .restrictions
+                .retain_mut(|restriction| match &mut restriction.scope {
+                    RestrictionScope::Call { trip: on, sequence } => {
+                        *on != trip
+                            || moved(*sequence).is_some_and(|to| {
+                                *sequence = to;
+                                true
+                            })
+                    }
+                    RestrictionScope::RouteStop { calls, .. } => {
+                        let all: Vec<_> = calls
+                            .iter()
+                            .filter_map(|&(on, sequence)| {
+                                if on == trip {
+                                    Some((on, moved(sequence)?))
+                                } else {
+                                    Some((on, sequence))
+                                }
+                            })
+                            .collect();
+                        *calls = all.into_boxed_slice();
+                        !calls.is_empty()
+                    }
+                });
+            timetable.call_keys.retain_mut(|key| {
+                key.trip != trip
+                    || moved(key.sequence).is_some_and(|to| {
+                        key.sequence = to;
+                        true
+                    })
+            });
+            timetable
+                .assignments
+                .retain_mut(|assignment| match &mut assignment.scope {
+                    Scope::Call { trip: on, sequence } => {
+                        *on != trip
+                            || moved(*sequence).is_some_and(|to| {
+                                *sequence = to;
+                                true
+                            })
+                    }
+                    Scope::CallRange { trip: on, from, to } => {
+                        *on != trip
+                            || match (moved(*from), moved(*to)) {
+                                (Some(start), Some(end)) => {
+                                    (*from, *to) = (start, end);
+                                    true
+                                }
+                                _ => false,
+                            }
+                    }
+                    _ => true,
+                });
+            Target::Trip(trip)
+        }
+        Edit::SetTripRoute { trip, route } => {
+            if !timetable.routes.contains(route) {
+                return Err("unknown route".to_owned());
+            }
+            let row = timetable.trips.get_mut(trip).ok_or("unknown trip")?;
+            row.route = route;
+            for call in &mut row.calls {
+                call.route_stop = None;
+            }
+            Target::Trip(trip)
+        }
+        Edit::SetTripHeadsign { trip, headsign } => {
+            timetable
+                .trips
+                .get_mut(trip)
+                .ok_or("unknown trip")?
+                .headsign = headsign;
+            Target::Trip(trip)
         }
         Edit::RemoveCalls { trip, sequences } => {
             let row = timetable.trips.get_mut(trip).ok_or("unknown trip")?;

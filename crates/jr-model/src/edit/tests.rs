@@ -289,3 +289,114 @@ fn removing_calls_takes_what_was_stated_for_them_and_needs_two_left() {
     // One call left is no trip.
     assert!(remove(&mut t, vec![3]).is_err());
 }
+
+#[test]
+fn a_split_trip_takes_a_copy_of_what_is_stated_for_the_trip() {
+    use crate::timetable::{
+        AssignmentKind, BindingMethod, Entity, Namespace, Scope, SourceKey, TransferKind,
+    };
+    let mut t = timetable();
+    let trip = t.trips.handles().next().unwrap();
+    t.keys.push(SourceKey {
+        namespace: Namespace::CZPTT_TRAIN_NUMBER,
+        identifier: "1234".into(),
+        entity: Entity::Trip(trip),
+        valid_from: t.horizon.start(),
+        valid_to: t.horizon.end(),
+        binding: BindingMethod::Identity,
+    });
+    t.assignments.push(Assignment {
+        scope: Scope::Call { trip, sequence: 2 },
+        kind: AssignmentKind::CalendarDesignation,
+        source_code: Some("X".into()),
+        note: None,
+        source_object: None,
+    });
+    t.transfers.push(Transfer {
+        from: None,
+        to: None,
+        from_route: None,
+        to_route: None,
+        from_trip: Some(trip),
+        to_trip: Some(trip),
+        kind: TransferKind::Timed,
+        minimum_time: None,
+        maximum_wait: None,
+    });
+
+    let mut edits = EditBuilder::new(&t, "test");
+    let first = edits.service(DateSet::from_indices([0]));
+    let second = edits.service(DateSet::from_indices([1]));
+    let id = crate::identity::overlay::slice(&t.trips[trip].id, &DateSet::from_indices([1]));
+    let copy = edits.split_trip(RULE, trip, id.clone(), second);
+    edits.push(
+        RULE,
+        Edit::SetTripService {
+            trip,
+            service: first,
+        },
+    );
+    let edits = edits.finish();
+    apply(&mut t, edits, &precedence(), &mut Diagnostics::new()).unwrap();
+
+    assert_eq!(t.trips[copy].id, id);
+    assert_eq!(t.trips[copy].calls, t.trips[trip].calls);
+    assert_eq!(
+        t.services.get(t.trips[copy].service),
+        DateSet::from_indices([1])
+    );
+    assert_eq!(
+        t.services.get(t.trips[trip].service),
+        DateSet::from_indices([0])
+    );
+    let on = |entity| t.keys.iter().filter(|key| key.entity == entity).count();
+    assert_eq!((on(Entity::Trip(trip)), on(Entity::Trip(copy))), (1, 1));
+    assert!(t.assignments.iter().any(|a| a.scope
+        == Scope::Call {
+            trip: copy,
+            sequence: 2
+        }));
+    // A transfer from the trip to itself now holds between the copy and itself too.
+    let ends: Vec<_> = t
+        .transfers
+        .iter()
+        .map(|x| (x.from_trip, x.to_trip))
+        .collect();
+    assert_eq!(ends, [(Some(trip), Some(trip)), (Some(copy), Some(copy))]);
+}
+
+#[test]
+fn replaced_calls_keep_what_was_stated_for_the_calls_that_continue() {
+    use crate::timetable::{AssignmentKind, Scope};
+    let mut t = timetable();
+    let trip = t.trips.handles().next().unwrap();
+    let (a, b) = (t.trips[trip].calls[0].place, t.trips[trip].calls[1].place);
+    let between = t.places.push(place("33333"));
+    for sequence in [1, 2] {
+        t.assignments.push(Assignment {
+            scope: Scope::Call { trip, sequence },
+            kind: AssignmentKind::CalendarDesignation,
+            source_code: Some(format!("at {sequence}").into()),
+            note: None,
+            source_object: None,
+        });
+    }
+    let mut edits = EditBuilder::new(&t, "test");
+    // A call inserted between the two; the first call does not continue.
+    edits.push(
+        RULE,
+        Edit::ReplaceTripCalls {
+            trip,
+            calls: vec![call(a, 1, 1), call(between, 2, 5), call(b, 3, 11)],
+            kept: vec![(2, 3)],
+        },
+    );
+    let edits = edits.finish();
+    apply(&mut t, edits, &precedence(), &mut Diagnostics::new()).unwrap();
+    let stated: Vec<_> = t
+        .assignments
+        .iter()
+        .map(|a| (a.scope, a.source_code.as_deref()))
+        .collect();
+    assert_eq!(stated, [(Scope::Call { trip, sequence: 3 }, Some("at 2"))]);
+}
