@@ -59,6 +59,13 @@ pub enum Edit {
         call: u32,
         boarding_point: Option<BoardingPointId>,
     },
+    /// A route's public marking. A field that is `None` is left as it is.
+    SetRoutePresentation {
+        route: RouteId,
+        short_name: Option<Box<str>>,
+        color: Option<Box<str>>,
+        text_color: Option<Box<str>>,
+    },
     /// The days a trip runs. An empty service retires the trip.
     SetTripService {
         trip: TripId,
@@ -441,6 +448,24 @@ fn apply_one(
             let call = row.calls.get_mut(call as usize).ok_or("unknown call")?;
             call.boarding_point = boarding_point;
             Target::Trip(trip)
+        }
+        Edit::SetRoutePresentation {
+            route,
+            short_name,
+            color,
+            text_color,
+        } => {
+            let row = timetable.routes.get_mut(route).ok_or("unknown route")?;
+            if short_name.is_some() {
+                row.short_name = short_name;
+            }
+            if color.is_some() {
+                row.color = color;
+            }
+            if text_color.is_some() {
+                row.text_color = text_color;
+            }
+            Target::Route(route)
         }
         Edit::SetTripService { trip, service } => {
             timetable.trips.get_mut(trip).ok_or("unknown trip")?.service = service;

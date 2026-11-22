@@ -16,10 +16,20 @@ pub enum LedgerError {
     Category { name: String, problem: String },
 }
 
-/// Ledger categories in file order.
+/// Ledger categories in file order, and the columns the ledger says not to compare.
 #[derive(Debug, Clone, Default)]
 pub struct Ledger {
     pub categories: Vec<LedgerCategory>,
+    pub labels: Vec<Label>,
+}
+
+/// A provenance label (`[[label]]`): a text column naming where a row came from, which the two
+/// implementations word differently. It is left out of the comparison, with a reason.
+#[derive(Debug, Clone)]
+pub struct Label {
+    pub relation: String,
+    pub column: String,
+    pub reason: String,
 }
 
 /// An explained difference.
@@ -42,6 +52,16 @@ pub struct LedgerCategory {
 struct RawLedger {
     #[serde(default)]
     category: Vec<RawCategory>,
+    #[serde(default)]
+    label: Vec<RawLabel>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawLabel {
+    relation: String,
+    column: String,
+    reason: String,
 }
 
 #[derive(Deserialize)]
@@ -97,7 +117,37 @@ impl Ledger {
                 max: raw.max,
             });
         }
-        Ok(Ledger { categories })
+        let mut labels = Vec::with_capacity(raw.label.len());
+        for raw in raw.label {
+            let name = format!("{}.{}", raw.relation, raw.column);
+            let fail = |problem: &str| LedgerError::Category {
+                name: name.clone(),
+                problem: problem.to_owned(),
+            };
+            let spec = contract()
+                .relation(&raw.relation)
+                .ok_or_else(|| fail("label of an unknown relation"))?;
+            if spec.field(&raw.column).is_none() {
+                return Err(fail("label of an unknown column"));
+            }
+            let is_key = spec.primary_key.contains(&raw.column)
+                || spec
+                    .foreign_keys
+                    .iter()
+                    .any(|key| key.fields.contains(&raw.column));
+            if is_key {
+                return Err(fail("a key column is not a label"));
+            }
+            if raw.reason.trim().is_empty() {
+                return Err(fail("empty reason"));
+            }
+            labels.push(Label {
+                relation: raw.relation,
+                column: raw.column,
+                reason: raw.reason,
+            });
+        }
+        Ok(Ledger { categories, labels })
     }
 
     /// Indexes of the ledger categories that may explain `category`, in file order.

@@ -297,6 +297,43 @@ fn the_ledger_assigns_in_file_order_through_filters_and_reports_what_is_left() {
 }
 
 #[test]
+fn a_label_column_of_the_ledger_is_not_compared_and_must_not_be_a_key() {
+    let label = |column: &str| {
+        format!(
+            "[[label]]
+relation = \"location\"
+column = \"{column}\"
+reason = \"worded differently\"
+"
+        )
+    };
+    assert!(Ledger::parse(&label("location_id")).is_err());
+    assert!(Ledger::parse(&label("parent_location_id")).is_err());
+    assert!(Ledger::parse(&label("nonsense")).is_err());
+    let ledger = Ledger::parse(&label("description")).expect("ledger");
+
+    let mut candidate = Fixture::valid();
+    set(
+        candidate.rows_mut("location"),
+        2,
+        "description",
+        s("from B"),
+    );
+    let a = open(&Fixture::valid(), "label-a");
+    let b = open(&candidate, "label-b");
+    let plain = compare(&a, &b, &Profile::default()).expect("compare");
+    assert_eq!(counts(&plain), [("location.changed.description", 1)]);
+    let profile = Profile {
+        labels: vec![(
+            ledger.labels[0].relation.clone(),
+            ledger.labels[0].column.clone(),
+        )],
+        ..Profile::default()
+    };
+    assert_eq!(counts(&compare(&a, &b, &profile).expect("compare")), []);
+}
+
+#[test]
 fn a_ledger_count_outside_its_range_fails() {
     let ledger = Ledger::parse(&LEDGER.replace("MAX", "0")).expect("ledger");
     let verdict = ledger_case(&ledger, "out-of-range");

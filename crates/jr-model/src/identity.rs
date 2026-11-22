@@ -343,6 +343,13 @@ pub mod jdf {
     pub fn note(owner: &PublicId, kind: &str, number: u64) -> PublicId {
         owner.child(&["notice", kind, &number.to_string()])
     }
+
+    /// A further note under the number of `note`: versions of a line published as one route
+    /// number their notes independently, so one number can carry several texts. `variant`
+    /// counts them from 2, in the order the versions are taken.
+    pub fn note_variant(note: &PublicId, variant: usize) -> PublicId {
+        note.child(&[&variant.to_string()])
+    }
 }
 
 #[cfg(test)]

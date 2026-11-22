@@ -67,10 +67,11 @@ impl Target {
         packages: [&Package; 2],
         contract: &Contract,
         generated: &GeneratedId,
+        profile: &Profile,
     ) -> Result<Target, PackageError> {
         let (a, b) = rayon::join(
-            || TargetSide::load(packages[0], contract, generated),
-            || TargetSide::load(packages[1], contract, generated),
+            || TargetSide::load(packages[0], contract, generated, profile),
+            || TargetSide::load(packages[1], contract, generated, profile),
         );
         let sides = [a?, b?];
         let referenced = sides.each_ref().map(|side| {
@@ -113,6 +114,7 @@ impl TargetSide {
         package: &Package,
         contract: &Contract,
         generated: &GeneratedId,
+        profile: &Profile,
     ) -> Result<TargetSide, PackageError> {
         let spec = load::relation_spec(contract, &generated.relation)?;
         let field = generated.field.as_str();
@@ -120,10 +122,10 @@ impl TargetSide {
             Content::Dates { exceptions } => {
                 load::dates(package, &generated.relation, field, exceptions)?
             }
-            Content::Columns => load::rows(package, spec, field, None)?,
+            Content::Columns => load::rows(package, spec, field, None, profile)?,
             Content::Children { relation } => {
                 let child = load::relation_spec(contract, relation)?;
-                load::rows(package, spec, field, Some(child))?
+                load::rows(package, spec, field, Some(child), profile)?
             }
         };
         side.hashes = side.compute_hashes();

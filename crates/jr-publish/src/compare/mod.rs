@@ -127,6 +127,7 @@ pub fn compare_classified(
                         packages,
                         contract(),
                         &profile.generated[target],
+                        profile,
                     )?);
                 }
             }
@@ -249,6 +250,7 @@ fn plan(profile: &Profile) -> Vec<Plan<'static>> {
             };
             let value_fields = fields
                 .filter(|field| !key_fields.contains(field) && !own_generated.contains(field))
+                .filter(|field| !profile.is_label(&spec.name, field))
                 .collect();
             let unreferenced_only = own_generated
                 .first()

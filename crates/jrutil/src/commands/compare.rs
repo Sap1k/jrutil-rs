@@ -28,7 +28,14 @@ pub fn run(options: &Options) -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    let mut profile = Profile::default();
+    let mut profile = Profile {
+        labels: ledger
+            .labels
+            .iter()
+            .map(|label| (label.relation.clone(), label.column.clone()))
+            .collect(),
+        ..Profile::default()
+    };
     if let Some(samples) = options.samples {
         profile.samples = samples;
     }
@@ -89,6 +96,12 @@ fn print(comparison: &Comparison, verdict: &Verdict, ledger: &Ledger) {
         println!(
             "unreferenced {}: A {}, B {}",
             item.target, item.counts[0], item.counts[1]
+        );
+    }
+    for label in &ledger.labels {
+        println!(
+            "not compared: {}.{}: {}",
+            label.relation, label.column, label.reason
         );
     }
     let reason = |name: &str| {

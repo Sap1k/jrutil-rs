@@ -3,8 +3,9 @@
 //!
 //! Both files have an exact header; cells are trimmed. A row that breaks the file grammar (as
 //! the F# `RouteRules.fs` and `JdfGtfsRules.loadTransportModeRules` define it) is an error
-//! naming its line. Matching, specificity and applying the rules are the compiler's; mode
-//! letters stay the JDF letters, colours stay as written.
+//! naming its line. What a selector means (which routes it names, which of two rules is the
+//! more specific) is part of the file's definition and is here, once, for both files; applying
+//! the rules is the compiler's. Mode letters stay the JDF letters, colours stay as written.
 
 pub const TRANSPORT_MODES_HEADER: [&str; 6] = [
     "agency_id",
@@ -36,6 +37,82 @@ pub enum LicencePattern {
     Range { low: Box<str>, high: Box<str> },
     /// `N*`: a digit prefix; empty for `*` alone (every licence).
     Prefix(Box<str>),
+}
+
+impl LicencePattern {
+    /// Whether a licence is one the pattern names (JDF-R406): equal; within an equally long
+    /// range, compared as text; or starting with the prefix.
+    pub fn matches(&self, licence: &str) -> bool {
+        match self {
+            LicencePattern::Licence(value) => licence == &**value,
+            LicencePattern::Range { low, high } => {
+                licence.len() == low.len() && licence >= &**low && licence <= &**high
+            }
+            LicencePattern::Prefix(prefix) => licence.starts_with(&**prefix),
+        }
+    }
+}
+
+/// Whether a rule's selector names a route (JDF-R406): the licence matches, and a selector with
+/// an operator also needs the route's operator to be that one.
+pub fn selector_matches(
+    rule_agency: Option<&str>,
+    pattern: &LicencePattern,
+    agency_ico: Option<&str>,
+    licence: &str,
+) -> bool {
+    pattern.matches(licence) && rule_agency.is_none_or(|rule| agency_ico == Some(rule))
+}
+
+/// How narrowly a selector names its routes (JDF-R406); larger is more specific. One licence
+/// beats a range beats a prefix; a narrower range and a longer prefix beat a wider and a
+/// shorter one; then a selector naming an operator beats one that does not.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Specificity {
+    kind: u8,
+    narrowness: i64,
+    agency: bool,
+}
+
+pub fn specificity(rule_agency: Option<&str>, pattern: &LicencePattern) -> Specificity {
+    let (kind, narrowness) = match pattern {
+        LicencePattern::Licence(_) => (3, 0),
+        LicencePattern::Range { low, high } => {
+            // Equally long digit strings with `low <= high`; one too long to count is the widest.
+            let width = match (low.parse::<i64>(), high.parse::<i64>()) {
+                (Ok(low), Ok(high)) => high - low,
+                _ => i64::MAX,
+            };
+            (2, -width)
+        }
+        LicencePattern::Prefix(prefix) => (1, prefix.len() as i64),
+    };
+    Specificity {
+        kind,
+        narrowness,
+        agency: rule_agency.is_some(),
+    }
+}
+
+/// The value of the most specific candidate (JDF-R406). `candidates` are the matching rules
+/// that set the field, as (specificity, the rule's line, value). Two equally specific ones are
+/// a mistake in the file: `Err` with their lines.
+pub fn most_specific<T>(
+    candidates: impl IntoIterator<Item = (Specificity, u64, T)>,
+) -> Result<Option<T>, Vec<u64>> {
+    let mut best: Option<(Specificity, Vec<u64>, T)> = None;
+    for (specificity, line, value) in candidates {
+        match &mut best {
+            Some((top, lines, _)) if *top == specificity => lines.push(line),
+            Some((top, _, _)) if *top > specificity => {}
+            _ => best = Some((specificity, vec![line], value)),
+        }
+    }
+    match best {
+        None => Ok(None),
+        Some((_, lines, value)) if lines.len() == 1 => Ok(Some(value)),
+        Some((_, lines, _)) => Err(lines),
+    }
 }
 
 /// An inclusive range of public line numbers (`N` or `N-M`).

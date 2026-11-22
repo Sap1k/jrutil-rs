@@ -82,6 +82,16 @@ fn copy<'a>(table: &'a Table, name: &str) -> Result<Cell<'a>, PublishError> {
     }))
 }
 
+/// A text cell copied from a column, or `fallback` where the column holds none.
+fn copy_or<'a>(table: &'a Table, name: &str, fallback: &'a str) -> Result<Cell<'a>, PublishError> {
+    let Column::Str(values) = column(table, name)? else {
+        return Err(PublishError::Contract(format!("{name} is not text")));
+    };
+    Ok(Box::new(move |row, out| {
+        out.push_str(values.get(row).unwrap_or(fallback));
+    }))
+}
+
 /// A time column as `[-]HH:MM:SS`.
 fn time<'a>(table: &'a Table, name: &str) -> Result<Cell<'a>, PublishError> {
     let Column::Int32(values) = column(table, name)? else {
@@ -190,7 +200,10 @@ pub fn write(
         &[
             copy(agency, "agency_id")?,
             copy(agency, "name")?,
-            copy(agency, "url")?,
+            // GTFS requires `agency_url`. An operator whose source names no website gets the
+            // feed publisher's, where the feed itself is explained; the serving relation keeps
+            // the absence (serving verdict on SERVING-R046).
+            copy_or(agency, "url", &options.feed_info.publisher_url)?,
             copy(agency, "timezone")?,
             copy(agency, "language")?,
             copy(agency, "phone")?,

@@ -697,6 +697,20 @@ fn timed_transfers_become_stop_pairs_only_in_gtfs_and_only_on_request() {
 }
 
 #[test]
+fn an_agency_without_a_website_gets_the_publisher_url_in_gtfs_only() {
+    let fixture = fixture();
+    let root = out("agency-url");
+    write_package(&fixture.t, &Diagnostics::new(), &options(), &root).unwrap();
+    let package = Package::open(&root).unwrap();
+    assert_eq!(
+        package.gtfs("agency.txt").unwrap().rows[0][2],
+        "https://obehy.cz"
+    );
+    let agency = package.relation("agency").unwrap();
+    assert_eq!(texts(&agency, "url"), [None]);
+}
+
+#[test]
 fn writing_twice_gives_the_same_bytes() {
     let fixture = fixture();
     let (first, second) = (out("twice-1"), out("twice-2"));

@@ -339,6 +339,18 @@ pub fn qualifiers_compatible(
         })
 }
 
+/// `1 − edit distance / longer length` of two texts, counted in characters (unit costs); 1 for
+/// equal texts, 0 when one is empty. The one plain edit similarity (the JDF merge's fuzzy match
+/// and registry suggestions, JDF-R221, R234).
+pub fn levenshtein_similarity(left: &str, right: &str) -> f64 {
+    if left == right {
+        return 1.0;
+    }
+    let left: Vec<char> = left.chars().collect();
+    let right: Vec<char> = right.chars().collect();
+    edit_similarity(&left, &right)
+}
+
 fn edit_similarity(left: &[char], right: &[char]) -> f64 {
     if left == right {
         return 1.0;

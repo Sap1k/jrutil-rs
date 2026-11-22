@@ -9,6 +9,10 @@ pub struct Profile {
     /// Identifiers the two implementations may generate differently. Never compared literally:
     /// a row keyed by one is compared by content, a reference to one by what it refers to.
     pub generated: Vec<GeneratedId>,
+    /// `(relation, column)` of provenance labels the two implementations word differently: not
+    /// compared, neither as a value nor as part of a row's content. None by default; a parity
+    /// ledger names them with a reason (`[[label]]`).
+    pub labels: Vec<(String, String)>,
     pub trip_identity: TripIdentity,
     /// Absolute tolerance of a double column not listed in `tolerances`.
     pub default_tolerance: f64,
@@ -88,6 +92,7 @@ impl Default for Profile {
                 generated("connection_claim", "connection_id", Content::Columns),
                 generated("travel_restriction", "restriction_id", Content::Columns),
             ],
+            labels: Vec::new(),
             trip_identity: TripIdentity::TripId,
             default_tolerance: 1e-9,
             tolerances,
@@ -108,6 +113,10 @@ impl Profile {
         self.generated
             .iter()
             .find(|id| id.relation == relation && id.field == field)
+    }
+
+    pub fn is_label(&self, relation: &str, field: &str) -> bool {
+        self.labels.iter().any(|(r, f)| r == relation && f == field)
     }
 
     /// Relations that only define generated content (a calendar and its exceptions, a shape

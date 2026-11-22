@@ -6,6 +6,7 @@ use rayon::prelude::*;
 
 use super::{Body, Children, Rows, TargetSide};
 use crate::compare::cells::cmp_rows;
+use crate::compare::profile::Profile;
 use crate::compare::typed;
 use crate::contract::{Contract, RelationSpec};
 use crate::dates;
@@ -108,20 +109,21 @@ pub(super) fn dates(
     })
 }
 
-/// A relation's content columns (every field but the identifier), plus, for a parent, its
-/// children's content columns in key order.
+/// A relation's content columns (every field but the identifier and the profile's labels),
+/// plus, for a parent, its children's content columns in key order.
 pub(super) fn rows(
     package: &Package,
     spec: &RelationSpec,
     field: &str,
     child: Option<&RelationSpec>,
+    profile: &Profile,
 ) -> Result<TargetSide, PackageError> {
     let mut columns: Vec<&str> = vec![field];
     columns.extend(
         spec.fields
             .iter()
             .map(|f| f.name.as_str())
-            .filter(|name| *name != field),
+            .filter(|name| *name != field && !profile.is_label(&spec.name, name)),
     );
     let mut own = package.parquet(&spec.name)?.read(&spec.name, &columns)?;
     let id_values = typed(package, &own, field, Column::as_str)?.clone();
