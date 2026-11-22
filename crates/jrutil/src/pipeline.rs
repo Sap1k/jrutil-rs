@@ -461,8 +461,9 @@ pub fn jdf(spec: &JdfSpec) -> Result<(), BuildError> {
     let before_overlay =
         (spec.filtered.is_some() && spec.overlay.is_some()).then(|| timetable.clone());
     let mut overlay_sources = Vec::new();
+    let mut overlay_summary = None;
     if let Some(overlay) = &spec.overlay {
-        overlay_sources = regional_overlay(
+        let (feeds, summary) = regional_overlay(
             &mut timetable,
             overlay,
             spec.registry.as_deref(),
@@ -470,6 +471,8 @@ pub fn jdf(spec: &JdfSpec) -> Result<(), BuildError> {
             &precedence,
             &mut diagnostics,
         )?;
+        overlay_sources = feeds;
+        overlay_summary = Some(summary);
         stages.done("overlay");
         // What the overlay brought is presented like the rest.
         let (edits, again) =
@@ -522,6 +525,7 @@ pub fn jdf(spec: &JdfSpec) -> Result<(), BuildError> {
             Some(("road_merge".to_owned(), merge_section)),
             Some(("road".to_owned(), section(&assembled.summary))),
             estimated_posts.map(|summary| ("estimated_posts".to_owned(), summary)),
+            overlay_summary.map(|summary| ("overlay".to_owned(), summary)),
             Some((
                 "route_presentation".to_owned(),
                 section(&route_presentation),
@@ -667,7 +671,7 @@ fn write_reports(directory: &Path, reports: &[jr_model::ReportTable]) -> Result<
 
 /// Regional feeds overlaid on the road timetable: each source is read with what its profile
 /// asks for, the engine returns edits and review reports. Returns each source's ID and the
-/// SHA-256 of its feed, in source order.
+/// SHA-256 of its feed, in source order, and the summary for diagnostics.json.
 fn regional_overlay(
     timetable: &mut Timetable,
     spec: &OverlaySpec,
@@ -675,7 +679,7 @@ fn regional_overlay(
     synonym_lines: &[synonyms::Line],
     precedence: &Precedence,
     diagnostics: &mut Diagnostics,
-) -> Result<Vec<(String, String)>, BuildError> {
+) -> Result<(Vec<(String, String)>, serde_json::Value), BuildError> {
     use jr_overlay::profile::{BaseProfile, SourceProfile};
 
     let mut loaded = Vec::with_capacity(spec.sources.len());
@@ -727,7 +731,7 @@ fn regional_overlay(
     if let Some(directory) = &spec.reports {
         write_reports(directory, &overlaid.reports)?;
     }
-    Ok(digests)
+    Ok((digests, section(&overlaid.summary)))
 }
 
 /// The filtered road feed: the published road timetable without the lines other feeds publish

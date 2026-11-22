@@ -1104,7 +1104,7 @@ fn presentation(
                 r.route_short_name.as_deref()
             }),
         );
-        let _long_name = pick(
+        let long_name = pick(
             "route_long_name",
             values(Capability::RouteLongName, |r| r.route_long_name.as_deref()),
         );
@@ -1118,12 +1118,13 @@ fn presentation(
                 r.route_text_color.as_deref()
             }),
         );
-        if short_name.is_some() || color.is_some() || text_color.is_some() {
+        if short_name.is_some() || long_name.is_some() || color.is_some() || text_color.is_some() {
             b.push(
                 OVL_R098,
                 jr_model::Edit::SetRoutePresentation {
                     route,
                     short_name,
+                    long_name,
                     color,
                     text_color,
                 },

@@ -145,6 +145,7 @@ pub fn route_presentation(
                 Edit::SetRoutePresentation {
                     route,
                     short_name,
+                    long_name: None,
                     color,
                     text_color,
                 },
