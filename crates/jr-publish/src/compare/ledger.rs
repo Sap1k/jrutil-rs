@@ -5,6 +5,7 @@ use regex::Regex;
 use serde::Deserialize;
 
 use super::Comparison;
+use super::profile::TripIdentity;
 use super::tally::Sample;
 use crate::contract::contract;
 
@@ -16,11 +17,13 @@ pub enum LedgerError {
     Category { name: String, problem: String },
 }
 
-/// Ledger categories in file order, and the columns the ledger says not to compare.
+/// Ledger categories in file order, the columns the ledger says not to compare and how trips
+/// are matched (`trip_identity`, default `trip_id`).
 #[derive(Debug, Clone, Default)]
 pub struct Ledger {
     pub categories: Vec<LedgerCategory>,
     pub labels: Vec<Label>,
+    pub trip_identity: TripIdentity,
 }
 
 /// A provenance label (`[[label]]`): a text column naming where a row came from, which the two
@@ -50,6 +53,8 @@ pub struct LedgerCategory {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawLedger {
+    #[serde(default)]
+    trip_identity: TripIdentity,
     #[serde(default)]
     category: Vec<RawCategory>,
     #[serde(default)]
@@ -147,7 +152,11 @@ impl Ledger {
                 reason: raw.reason,
             });
         }
-        Ok(Ledger { categories, labels })
+        Ok(Ledger {
+            categories,
+            labels,
+            trip_identity: raw.trip_identity,
+        })
     }
 
     /// Indexes of the ledger categories that may explain `category`, in file order.

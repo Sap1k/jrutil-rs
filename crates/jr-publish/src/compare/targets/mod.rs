@@ -321,6 +321,23 @@ impl<'a> TargetPair<'a> {
         }
     }
 
+    /// A service's dates as `first..last (n days)`; `None` for content that is not dates.
+    pub fn date_span(&self, side: usize, index: u32) -> Option<String> {
+        let Body::Dates(sets) = &self.target.sides[side].body else {
+            return None;
+        };
+        let days = &sets[index as usize];
+        Some(match (days.first(), days.last()) {
+            (Some(&first), Some(&last)) => format!(
+                "{}..{} ({} days)",
+                day_text(first),
+                day_text(last),
+                days.len()
+            ),
+            _ => "no dates".to_owned(),
+        })
+    }
+
     /// The content as a key part: its text, plus a digest where the text abbreviates it.
     pub fn canonical_text(&self, side: usize, index: u32) -> String {
         let text = self.text(side, index);

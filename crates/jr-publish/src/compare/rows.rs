@@ -31,7 +31,7 @@ impl Columns<'_> {
         hashes
     }
 
-    fn eq(&self, ra: u32, rb: u32) -> bool {
+    pub fn eq(&self, ra: u32, rb: u32) -> bool {
         self.pairs
             .iter()
             .all(|pair| pair.eq(ra as usize, rb as usize))
@@ -50,15 +50,19 @@ impl Columns<'_> {
 
 /// Rows only in A, only in B, and matched pairs.
 #[derive(Default)]
-struct Matching {
-    missing: Vec<u32>,
-    extra: Vec<u32>,
-    pairs: Vec<(u32, u32)>,
+pub(crate) struct Matching {
+    pub missing: Vec<u32>,
+    pub extra: Vec<u32>,
+    pub pairs: Vec<(u32, u32)>,
 }
 
 /// Merges two sorted hash lists; rows with equal hashes pair up when `same` confirms them,
 /// first come first served (so duplicates pair one to one).
-fn match_rows(a: &[(u64, u32)], b: &[(u64, u32)], same: impl Fn(u32, u32) -> bool) -> Matching {
+pub(crate) fn match_rows(
+    a: &[(u64, u32)],
+    b: &[(u64, u32)],
+    same: impl Fn(u32, u32) -> bool,
+) -> Matching {
     let mut matching = Matching::default();
     let (mut i, mut j) = (0, 0);
     while i < a.len() || j < b.len() {
@@ -131,11 +135,13 @@ fn record_unmatched<'l>(
 }
 
 /// A relation matched by key: rows only in A are `missing`, only in B `extra`, and each
-/// differing value column of a matched pair is `changed.<column>`.
+/// differing value column of a matched pair is `changed.<column>`. An unmatched row's sample
+/// key is `describe(side, row)` where that says something, else its key.
 pub(crate) fn keyed<'l>(
     row_counts: [usize; 2],
     key: &Columns,
     values: &Columns,
+    describe: &(dyn Fn(usize, u32) -> Option<String> + Sync),
     fresh: impl Fn() -> Recorder<'l> + Sync,
 ) -> Recorder<'l> {
     let all = |rows: usize| (0..rows as u32).collect::<Vec<u32>>();
@@ -150,14 +156,14 @@ pub(crate) fn keyed<'l>(
         recorder,
         &matching.missing,
         MISSING,
-        &|row| key.text(0, row),
+        &|row| describe(0, row).unwrap_or_else(|| key.text(0, row)),
         &fresh,
     );
     recorder = record_unmatched(
         recorder,
         &matching.extra,
         EXTRA,
-        &|row| key.text(1, row),
+        &|row| describe(1, row).unwrap_or_else(|| key.text(1, row)),
         &fresh,
     );
     let changed = matching

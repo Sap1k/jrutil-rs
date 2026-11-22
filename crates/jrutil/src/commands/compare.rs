@@ -34,6 +34,7 @@ pub fn run(options: &Options) -> ExitCode {
             .iter()
             .map(|label| (label.relation.clone(), label.column.clone()))
             .collect(),
+        trip_identity: ledger.trip_identity,
         ..Profile::default()
     };
     if let Some(samples) = options.samples {
@@ -52,6 +53,18 @@ pub fn run(options: &Options) -> ExitCode {
     };
     let verdict = ledger.judge(&comparison);
     print(&comparison, &verdict, &ledger);
+    match comparison.trip_pairing {
+        None => println!("trip identity: {}", profile.trip_identity.as_str()),
+        Some(pairing) => println!(
+            "trip identity: {} (paired by id {}, by content {}, near {}; unpaired A {}, B {})",
+            profile.trip_identity.as_str(),
+            pairing.by_id,
+            pairing.by_content,
+            pairing.near,
+            pairing.unpaired[0],
+            pairing.unpaired[1]
+        ),
+    }
     if let Some(path) = options.report
         && let Err(error) = std::fs::write(path, report_json(&comparison, &verdict))
     {

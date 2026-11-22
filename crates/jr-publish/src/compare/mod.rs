@@ -8,6 +8,7 @@
 //! deterministic, so a comparison of millions of rows never holds millions of differences.
 
 mod cells;
+mod journey;
 mod ledger;
 mod profile;
 mod report;
@@ -18,10 +19,12 @@ mod targets;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use cells::Pair;
+use journey::{Journeys, Renames};
 use rows::Columns;
 use tally::{Categories, Recorder};
 use targets::{Target, TargetPair};
 
+pub use journey::TripPairing;
 pub use ledger::{
     CategoryVerdict, DefaultVerdict, Ledger, LedgerCategory, LedgerError, Status, Verdict,
 };
@@ -43,6 +46,8 @@ pub struct Comparison {
     pub categories: BTreeMap<String, CategoryDiffs>,
     /// Generated content nothing references (informational), by `relation.field`.
     pub unreferenced: Vec<Unreferenced>,
+    /// How trips were paired under `TripIdentity::Journey`; `None` under `TripId`.
+    pub trip_pairing: Option<TripPairing>,
 }
 
 impl Comparison {
@@ -109,6 +114,24 @@ pub fn compare_classified(
         }
     }
     let mut targets: BTreeMap<usize, Target> = BTreeMap::new();
+    // Tables the trip pairing has already read, handed on to their relation's comparison.
+    let mut preread: HashMap<&str, [Table; 2]> = HashMap::new();
+    let journeys = match profile.trip_identity {
+        TripIdentity::TripId => None,
+        TripIdentity::Journey => Some(journey::pair_trips(
+            &plans,
+            packages,
+            profile,
+            &mut targets,
+            &mut preread,
+        )?),
+    };
+    let context = Context {
+        packages,
+        profile,
+        ledger,
+        journeys: journeys.as_ref(),
+    };
     let mut summaries: BTreeMap<&str, RelationSummary> = BTreeMap::new();
     let mut categories = BTreeMap::new();
     let mut unreferenced = Vec::new();
@@ -121,24 +144,14 @@ pub fn compare_classified(
             };
             [count(a)?, count(b)?]
         } else {
-            for target in plan.targets() {
-                if let std::collections::btree_map::Entry::Vacant(entry) = targets.entry(target) {
-                    entry.insert(Target::load(
-                        packages,
-                        contract(),
-                        &profile.generated[target],
-                        profile,
-                    )?);
-                }
-            }
+            load_targets(plan, packages, profile, &mut targets)?;
             let recorder_categories = plan.categories(ledger);
             let rows = compare_relation(
                 plan,
-                packages,
-                profile,
+                &context,
                 &targets,
                 &recorder_categories,
-                ledger,
+                preread.remove(name),
                 &mut categories,
             )?;
             for target in plan.targets() {
@@ -172,7 +185,101 @@ pub fn compare_classified(
         relations,
         categories,
         unreferenced,
+        trip_pairing: journeys.map(|journeys| journeys.counts),
     })
+}
+
+/// What every relation's comparison shares.
+struct Context<'a> {
+    packages: [&'a Package; 2],
+    profile: &'a Profile,
+    ledger: &'a Ledger,
+    journeys: Option<&'a Journeys>,
+}
+
+/// Loads the generated identifiers `plan` references that are not loaded yet.
+fn load_targets(
+    plan: &Plan,
+    packages: [&Package; 2],
+    profile: &Profile,
+    targets: &mut BTreeMap<usize, Target>,
+) -> Result<(), PackageError> {
+    for target in plan.targets() {
+        if let std::collections::btree_map::Entry::Vacant(entry) = targets.entry(target) {
+            entry.insert(Target::load(
+                packages,
+                contract(),
+                &profile.generated[target],
+                profile,
+            )?);
+        }
+    }
+    Ok(())
+}
+
+/// Both sides' tables of a relation, every contract field.
+fn read_tables(plan: &Plan, packages: [&Package; 2]) -> Result<[Table; 2], PackageError> {
+    let name = plan.spec.name.as_str();
+    let fields: Vec<&str> = plan.spec.fields.iter().map(|f| f.name.as_str()).collect();
+    let read = |package: &Package| package.parquet(name)?.read(name, &fields);
+    let (ta, tb) = rayon::join(|| read(packages[0]), || read(packages[1]));
+    Ok([ta?, tb?])
+}
+
+/// The targets `plan` references, paired.
+fn target_pairs<'t>(
+    plan: &Plan,
+    targets: &'t BTreeMap<usize, Target>,
+    packages: [&Package; 2],
+    profile: &Profile,
+) -> Result<BTreeMap<usize, TargetPair<'t>>, PackageError> {
+    plan.references
+        .values()
+        .map(|&target| {
+            Ok((
+                target,
+                TargetPair::new(&targets[&target], packages, profile)?,
+            ))
+        })
+        .collect()
+}
+
+/// Pairs the columns of one relation's two tables: references to generated identifiers by
+/// content, trip references through `renames`, everything else by value.
+struct Builder<'a> {
+    plan: &'a Plan<'static>,
+    packages: [&'a Package; 2],
+    tables: &'a [Table; 2],
+    profile: &'a Profile,
+    target_pairs: &'a BTreeMap<usize, TargetPair<'a>>,
+    renames: Option<&'a Renames>,
+}
+
+impl<'a> Builder<'a> {
+    fn pair(&self, field: &str) -> Result<Pair<'a>, PackageError> {
+        let tables: &'a [Table; 2] = self.tables;
+        let column = |side: usize| typed(self.packages[side], &tables[side], field, Some);
+        let (ca, cb) = (column(0)?, column(1)?);
+        let renames = self
+            .renames
+            .filter(|_| self.plan.trip_refs.contains(&field));
+        let paired = match (self.plan.references.get(field), renames) {
+            (Some(target), _) => Pair::reference(ca, cb, &self.target_pairs[target]),
+            (None, Some(renames)) => Pair::renamed(ca, cb, renames),
+            (None, None) => Pair::new(ca, cb, self.profile.tolerance(field)),
+        };
+        paired.map_err(|_| type_mismatch(self.packages[1], &self.plan.spec.name, field, cb))
+    }
+
+    fn columns(&self, fields: &[&'static str]) -> Result<Columns<'a>, PackageError> {
+        Ok(Columns {
+            names: fields.to_vec(),
+            pairs: fields
+                .iter()
+                .map(|field| self.pair(field))
+                .collect::<Result<_, _>>()?,
+        })
+    }
 }
 
 /// How one relation is compared.
@@ -188,6 +295,9 @@ struct Plan<'c> {
     /// For a multiset keyed by a referenced generated identifier: only the rows nothing
     /// references are compared (the others are compared through their referrers).
     unreferenced_only: Option<(&'c str, usize)>,
+    /// Fields naming a trip (`trip.trip_id`, foreign keys reaching it, `Profile::trip_columns`):
+    /// compared through the trip pairing under `TripIdentity::Journey`.
+    trip_refs: Vec<&'c str>,
 }
 
 impl Plan<'_> {
@@ -212,6 +322,7 @@ fn plan(profile: &Profile) -> Vec<Plan<'static>> {
             .iter()
             .position(|id| id.relation == relation && id.field == field)
     };
+    let trip_refs = journey::trip_references(profile);
     let mut plans: Vec<Plan> = contract
         .relations
         .iter()
@@ -241,11 +352,8 @@ fn plan(profile: &Profile) -> Vec<Plan<'static>> {
                 Mode::Keyed
             };
             let fields = spec.fields.iter().map(|field| field.name.as_str());
-            // Trips, and the rows keyed by trip, are matched by `profile.trip_identity`.
-            let key_fields: Vec<&str> = match (mode, profile.trip_identity) {
-                (Mode::Keyed, TripIdentity::TripId) => {
-                    spec.primary_key.iter().map(String::as_str).collect()
-                }
+            let key_fields: Vec<&str> = match mode {
+                Mode::Keyed => spec.primary_key.iter().map(String::as_str).collect(),
                 _ => Vec::new(),
             };
             let value_fields = fields
@@ -266,6 +374,12 @@ fn plan(profile: &Profile) -> Vec<Plan<'static>> {
                     references
                 },
                 unreferenced_only,
+                trip_refs: spec
+                    .fields
+                    .iter()
+                    .map(|field| field.name.as_str())
+                    .filter(|field| trip_refs.contains(&(spec.name.as_str(), *field)))
+                    .collect(),
             }
         })
         .collect();
@@ -285,48 +399,35 @@ fn plan(profile: &Profile) -> Vec<Plan<'static>> {
 /// Compares one keyed or multiset relation; returns its row counts.
 fn compare_relation(
     plan: &Plan<'static>,
-    packages: [&Package; 2],
-    profile: &Profile,
+    context: &Context,
     targets: &BTreeMap<usize, Target>,
     categories: &Categories,
-    ledger: &Ledger,
+    preread: Option<[Table; 2]>,
     out: &mut BTreeMap<String, CategoryDiffs>,
 ) -> Result<[u64; 2], PackageError> {
-    let name = plan.spec.name.as_str();
-    let fields: Vec<&str> = plan.spec.fields.iter().map(|f| f.name.as_str()).collect();
-    let read = |package: &Package| package.parquet(name)?.read(name, &fields);
-    let (ta, tb) = rayon::join(|| read(packages[0]), || read(packages[1]));
-    let tables = [ta?, tb?];
-    let target_pairs: BTreeMap<usize, TargetPair> = plan
-        .references
-        .values()
-        .map(|&target| {
-            Ok((
-                target,
-                TargetPair::new(&targets[&target], packages, profile)?,
-            ))
-        })
-        .collect::<Result<_, PackageError>>()?;
-    let pair = |field: &str| -> Result<Pair, PackageError> {
-        let column = |side: usize| typed(packages[side], &tables[side], field, Some);
-        let (ca, cb) = (column(0)?, column(1)?);
-        let paired = match plan.references.get(field) {
-            Some(target) => Pair::reference(ca, cb, &target_pairs[target]),
-            None => Pair::new(ca, cb, profile.tolerance(field)),
-        };
-        paired.map_err(|_| type_mismatch(packages[1], name, field, cb))
+    let Context {
+        packages,
+        profile,
+        ledger,
+        journeys,
+    } = *context;
+    let tables = match preread {
+        Some(tables) => tables,
+        None => read_tables(plan, packages)?,
     };
-    let columns = |fields: &[&'static str]| -> Result<Columns, PackageError> {
-        Ok(Columns {
-            names: fields.to_vec(),
-            pairs: fields
-                .iter()
-                .map(|field| pair(field))
-                .collect::<Result<_, _>>()?,
-        })
+    let target_pairs = target_pairs(plan, targets, packages, profile)?;
+    let builder = Builder {
+        plan,
+        packages,
+        tables: &tables,
+        profile,
+        target_pairs: &target_pairs,
+        renames: journeys
+            .map(|journeys| &journeys.renames)
+            .filter(|renames| !renames.is_empty()),
     };
-    let key = columns(&plan.key_fields)?;
-    let values = columns(&plan.value_fields)?;
+    let key = builder.columns(&plan.key_fields)?;
+    let values = builder.columns(&plan.value_fields)?;
     for (field, pair) in values.names.iter().zip(&values.pairs) {
         if let Some(target) = plan.references.get(field) {
             for side in 0..2 {
@@ -338,8 +439,13 @@ fn compare_relation(
     }
     let fresh = || Recorder::new(categories, ledger, profile.samples);
     let counts = [tables[0].rows(), tables[1].rows()];
+    // Trips left unpaired are described so that a person can find the journey.
+    let unpaired = journeys
+        .filter(|_| plan.spec.name == journey::TRIP)
+        .map(|journeys| &journeys.unpaired);
+    let describe = |side: usize, row: u32| unpaired?[side].get(&row).cloned();
     let recorder = match plan.mode {
-        Mode::Keyed => rows::keyed(counts, &key, &values, fresh),
+        Mode::Keyed => rows::keyed(counts, &key, &values, &describe, fresh),
         _ => {
             let selected = |side: usize| -> Result<Vec<u32>, PackageError> {
                 let all = 0..counts[side] as u32;

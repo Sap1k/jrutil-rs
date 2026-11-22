@@ -5,7 +5,7 @@
 mod support;
 
 use jiff::civil::date;
-use jr_publish::compare::{Sample, Status};
+use jr_publish::compare::{Sample, Status, TripIdentity};
 use jr_publish::{Comparison, Ledger, Package, Profile, compare, compare_classified};
 use support::{Cell, Fixture, Row, b, d, i, row, s};
 
@@ -351,4 +351,208 @@ fn a_ledger_category_needs_a_reason_and_a_real_category() {
     assert!(Ledger::parse(&entry("trip.changed.nonsense", "why")).is_err());
     assert!(Ledger::parse(&entry("trips.missing", "why")).is_err());
     assert!(Ledger::parse(&format!("{}maximum = 3\n", entry("trip.extra", "why"))).is_err());
+}
+
+fn journey_profile() -> Profile {
+    Profile {
+        trip_identity: TripIdentity::Journey,
+        ..Profile::default()
+    }
+}
+
+fn diff_journeys(name: &str, a: &Fixture, b: &Fixture) -> Comparison {
+    let pa = open(a, &format!("journey-{name}-a"));
+    let pb = open(b, &format!("journey-{name}-b"));
+    compare(&pa, &pb, &journey_profile()).expect("compare")
+}
+
+/// The fixture's trip with an assignment and its source key, all under `trip`.
+fn trip_named(trip: &str) -> Fixture {
+    let mut fixture = Fixture::valid();
+    set(fixture.rows_mut("trip"), 0, "trip_id", s(trip));
+    for call in fixture.rows_mut("trip_call") {
+        call.insert("trip_id".into(), s(trip));
+    }
+    set(fixture.rows_mut("source_key"), 0, "public_id", s(trip));
+    *fixture.rows_mut("assignment") = vec![row(&[
+        ("assignment_id", s(&format!("{trip}:wheelchair"))),
+        ("scope", s("trip")),
+        ("kind", s("wheelchair_accessible_vehicle")),
+        ("trip_id", s(trip)),
+    ])];
+    fixture
+}
+
+/// Another trip of the fixture's route, `id`, on `service`, arriving at `arrival`.
+fn add_trip(fixture: &mut Fixture, id: &str, service: &str, arrival: i64) {
+    let mut trip = fixture.rows_mut("trip")[0].clone();
+    trip.insert("trip_id".into(), s(id));
+    trip.insert("service_id".into(), s(service));
+    fixture.rows_mut("trip").push(trip);
+    let mut calls = fixture.rows_mut("trip_call")[..2].to_vec();
+    for call in &mut calls {
+        call.insert("trip_id".into(), s(id));
+    }
+    calls[1].insert("scheduled_arrival".into(), i(arrival));
+    fixture.rows_mut("trip_call").extend(calls);
+}
+
+#[test]
+fn a_renamed_trip_with_equal_content_pairs_with_everything_that_names_it() {
+    let comparison = diff_journeys(
+        "renamed",
+        &trip_named("jdf:trip:1"),
+        &trip_named("overlay:x:trip:9"),
+    );
+    assert_eq!(counts(&comparison), []);
+    let pairing = comparison.trip_pairing.expect("journey pairing");
+    assert_eq!(
+        (
+            pairing.by_id,
+            pairing.by_content,
+            pairing.near,
+            pairing.unpaired
+        ),
+        (0, 1, 0, [0, 0])
+    );
+}
+
+#[test]
+fn under_the_default_identity_a_renamed_trip_is_missing_and_extra() {
+    let a = open(&trip_named("jdf:trip:1"), "journey-default-a");
+    let b = open(&trip_named("overlay:x:trip:9"), "journey-default-b");
+    let comparison = compare(&a, &b, &Profile::default()).expect("compare");
+    assert_eq!(
+        counts(&comparison),
+        [
+            ("assignment.extra", 1),
+            ("assignment.missing", 1),
+            ("source_key.extra", 1),
+            ("source_key.missing", 1),
+            ("trip.extra", 1),
+            ("trip.missing", 1),
+            ("trip_call.extra", 2),
+            ("trip_call.missing", 2),
+        ]
+    );
+    assert_eq!(comparison.trip_pairing, None);
+}
+
+#[test]
+fn a_renamed_trip_with_one_changed_time_is_a_near_pair() {
+    let mut candidate = trip_named("overlay:x:trip:9");
+    set(
+        candidate.rows_mut("trip_call"),
+        1,
+        "scheduled_arrival",
+        i(90_060),
+    );
+    let comparison = diff_journeys("near", &trip_named("jdf:trip:1"), &candidate);
+    assert_eq!(
+        counts(&comparison),
+        [("trip_call.changed.scheduled_arrival", 1)]
+    );
+    let bucket = &comparison.categories["trip_call.changed.scheduled_arrival"].groups[&None];
+    assert_eq!(bucket.samples[0].key, "jdf:trip:1 → overlay:x:trip:9|2");
+    assert_eq!(comparison.trip_pairing.map(|p| p.near), Some(1));
+}
+
+#[test]
+fn a_near_pair_needs_a_single_candidate() {
+    let mut candidate = trip_named("overlay:x:trip:8");
+    set(
+        candidate.rows_mut("trip_call"),
+        1,
+        "scheduled_arrival",
+        i(90_060),
+    );
+    *candidate.rows_mut("assignment") = Vec::new();
+    add_trip(&mut candidate, "overlay:x:trip:9", "jdf:service:1", 90_120);
+    let mut reference = trip_named("jdf:trip:1");
+    *reference.rows_mut("assignment") = Vec::new();
+    let comparison = diff_journeys("two-candidates", &reference, &candidate);
+    assert_eq!(
+        counts(&comparison),
+        [
+            ("source_key.extra", 1),
+            ("source_key.missing", 1),
+            ("trip.extra", 2),
+            ("trip.missing", 1),
+            ("trip_call.extra", 4),
+            ("trip_call.missing", 2),
+        ]
+    );
+}
+
+#[test]
+fn a_trip_split_differently_stays_unpaired_and_is_described() {
+    let reference = short_service();
+    // The same nine dates as two trips: the first week (without 01-07) and the second.
+    let mut candidate = short_service();
+    *candidate.rows_mut("service_calendar") = [("w1", 5, 9), ("w2", 12, 16)]
+        .into_iter()
+        .map(|(id, from, to)| {
+            row(&[
+                ("service_id", s(&format!("jdf:service:{id}"))),
+                ("valid_from", d(date(2026, 1, from))),
+                ("valid_to", d(date(2026, 1, to))),
+                ("weekday_mask", i(31)),
+            ])
+        })
+        .collect();
+    set(
+        candidate.rows_mut("service_exception"),
+        0,
+        "service_id",
+        s("jdf:service:w1"),
+    );
+    *candidate.rows_mut("trip") = Vec::new();
+    *candidate.rows_mut("trip_call") = Vec::new();
+    let template = short_service();
+    for (id, service) in [("overlay:x:trip:1", "w1"), ("overlay:x:trip:2", "w2")] {
+        let mut trip = template.relations["trip"][0].clone();
+        trip.insert("trip_id".into(), s(id));
+        trip.insert("service_id".into(), s(&format!("jdf:service:{service}")));
+        candidate.rows_mut("trip").push(trip);
+        for call in &template.relations["trip_call"] {
+            let mut call = call.clone();
+            call.insert("trip_id".into(), s(id));
+            candidate.rows_mut("trip_call").push(call);
+        }
+    }
+    let comparison = diff_journeys("split", &reference, &candidate);
+    assert_eq!(
+        counts(&comparison),
+        [
+            ("trip.extra", 2),
+            ("trip.missing", 1),
+            ("trip_call.extra", 4),
+            ("trip_call.missing", 2),
+        ]
+    );
+    assert_eq!(
+        comparison.categories["trip.missing"].groups[&None].samples[0].key,
+        "jdf:trip:1 | jdf:route:1 | 2026-01-05..2026-01-16 (9 days) \
+         | jdf:stop:1@07:00:00 → jdf:stop:2@25:00:00 | 2 calls"
+    );
+    assert_eq!(
+        comparison.categories["trip.extra"].groups[&None].samples[1].key,
+        "overlay:x:trip:2 | jdf:route:1 | 2026-01-12..2026-01-16 (5 days) \
+         | jdf:stop:1@07:00:00 → jdf:stop:2@25:00:00 | 2 calls"
+    );
+}
+
+#[test]
+fn the_ledger_chooses_the_trip_identity() {
+    let parse = |text: &str| Ledger::parse(text).map(|ledger| ledger.trip_identity);
+    assert_eq!(parse("").expect("ledger"), TripIdentity::TripId);
+    assert_eq!(
+        parse("trip_identity = \"trip_id\"\n").expect("ledger"),
+        TripIdentity::TripId
+    );
+    assert_eq!(
+        parse("trip_identity = \"journey\"\n").expect("ledger"),
+        TripIdentity::Journey
+    );
+    assert!(parse("trip_identity = \"source_key\"\n").is_err());
 }

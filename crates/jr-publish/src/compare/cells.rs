@@ -24,8 +24,9 @@ enum Cmp<'a> {
     Str {
         a: &'a StrColumn,
         b: &'a StrColumn,
-        /// A pool code -> B pool code (`ABSENT` when B lacks the string).
+        /// A pool code -> B pool code (`ABSENT` when B lacks the string), through `renamed`.
         to_b: Vec<u32>,
+        renamed: Option<Renamed<'a>>,
     },
     Int16(&'a [Option<i16>], &'a [Option<i16>]),
     Int32(&'a [Option<i32>], &'a [Option<i32>]),
@@ -50,6 +51,15 @@ pub(crate) struct RefPair<'a> {
     pub target: &'a TargetPair<'a>,
 }
 
+/// A's strings that B names differently (trip IDs paired by `journey`), per A pool code: a
+/// renamed A value compares, hashes and matches as B's name for it.
+struct Renamed<'a> {
+    /// B's name for a renamed code.
+    names: Vec<Option<&'a str>>,
+    /// Hash of each code's value as B names it.
+    hashes: Vec<u64>,
+}
+
 /// The two columns have different types.
 #[derive(Debug)]
 pub(crate) struct TypeMismatch;
@@ -58,20 +68,7 @@ impl<'a> Pair<'a> {
     pub fn new(a: &'a Column, b: &'a Column, tolerance: f64) -> Result<Pair<'a>, TypeMismatch> {
         let columns = [a, b];
         let cmp = match (a, b) {
-            (Column::Str(a), Column::Str(b)) => {
-                let index: HashMap<&str, u32> = b
-                    .pool()
-                    .iter()
-                    .enumerate()
-                    .map(|(code, value)| (&**value, code as u32))
-                    .collect();
-                let to_b = a
-                    .pool()
-                    .iter()
-                    .map(|value| index.get(&**value).copied().unwrap_or(ABSENT))
-                    .collect();
-                Cmp::Str { a, b, to_b }
-            }
+            (Column::Str(a), Column::Str(b)) => strings(a, b, None),
             (Column::Int16(a), Column::Int16(b)) => Cmp::Int16(a, b),
             (Column::Int32(a), Column::Int32(b)) => Cmp::Int32(a, b),
             (Column::Bool(a), Column::Bool(b)) => Cmp::Bool(a, b),
@@ -111,6 +108,46 @@ impl<'a> Pair<'a> {
         })
     }
 
+    /// Strings naming trips: an A value `renames` maps stands for B's name for it.
+    pub fn renamed(
+        a: &'a Column,
+        b: &'a Column,
+        renames: &'a HashMap<Box<str>, Box<str>>,
+    ) -> Result<Pair<'a>, TypeMismatch> {
+        let (Column::Str(sa), Column::Str(sb)) = (a, b) else {
+            return Err(TypeMismatch);
+        };
+        Ok(Pair {
+            columns: [a, b],
+            cmp: strings(sa, sb, Some(renames)),
+        })
+    }
+
+    /// One side's column.
+    pub fn column(&self, side: usize) -> &'a Column {
+        self.columns[side]
+    }
+
+    /// The dates of the service a reference names, as `first..last (n days)`.
+    pub fn date_span(&self, side: usize, row: usize) -> Option<String> {
+        match &self.cmp {
+            Cmp::Ref(pair) => match pair.content(side, row)? {
+                Ok(index) => pair.target.date_span(side, index),
+                Err(_) => None,
+            },
+            _ => None,
+        }
+    }
+
+    /// One side's value as text, `None` for null.
+    pub fn text(&self, side: usize, row: usize) -> Option<String> {
+        if side == 0 {
+            self.text_a(row)
+        } else {
+            self.text_b(row, None)
+        }
+    }
+
     /// The content indexes one side's references resolve to (for marking them used).
     pub fn referenced(&self, side: usize) -> impl Iterator<Item = u32> + '_ {
         let contents = match &self.cmp {
@@ -124,7 +161,7 @@ impl<'a> Pair<'a> {
     /// Whether A's row `ra` and B's row `rb` hold the same value.
     pub fn eq(&self, ra: usize, rb: usize) -> bool {
         match &self.cmp {
-            Cmp::Str { a, b, to_b } => match (a.code(ra), b.code(rb)) {
+            Cmp::Str { a, b, to_b, .. } => match (a.code(ra), b.code(rb)) {
                 (None, None) => true,
                 (Some(code_a), Some(code_b)) => to_b[code_a as usize] == code_b,
                 _ => false,
@@ -142,10 +179,17 @@ impl<'a> Pair<'a> {
         }
     }
 
-    /// A's value as text, `None` for null.
+    /// A's value as text, `None` for null; a renamed value as `<A's> → <B's>`.
     pub fn text_a(&self, ra: usize) -> Option<String> {
         match &self.cmp {
-            Cmp::Str { a, .. } => a.get(ra).map(str::to_owned),
+            Cmp::Str { a, renamed, .. } => {
+                let code = a.code(ra)? as usize;
+                let value = &*a.pool()[code];
+                Some(match renamed.as_ref().and_then(|r| r.names[code]) {
+                    Some(name) => format!("{value} → {name}"),
+                    None => value.to_owned(),
+                })
+            }
             Cmp::Int16(a, _) => a[ra].map(|v| v.to_string()),
             Cmp::Int32(a, _) => a[ra].map(|v| v.to_string()),
             Cmp::Bool(a, _) => a[ra].map(|v| v.to_string()),
@@ -181,8 +225,59 @@ impl<'a> Pair<'a> {
     pub fn hasher(&self, side: usize) -> CellHasher<'_> {
         match &self.cmp {
             Cmp::Ref(pair) => CellHasher::Ref(pair, side),
+            Cmp::Str {
+                a,
+                renamed: Some(renamed),
+                ..
+            } if side == 0 => CellHasher::Renamed(a, &renamed.hashes),
             _ => CellHasher::Plain(ValueHashes::new(self.columns[side])),
         }
+    }
+}
+
+/// A string pair; with `renames`, A's values are taken as B names them.
+fn strings<'a>(
+    a: &'a StrColumn,
+    b: &'a StrColumn,
+    renames: Option<&'a HashMap<Box<str>, Box<str>>>,
+) -> Cmp<'a> {
+    let index: HashMap<&str, u32> = b
+        .pool()
+        .iter()
+        .enumerate()
+        .map(|(code, value)| (&**value, code as u32))
+        .collect();
+    let names: Vec<Option<&'a str>> = match renames {
+        Some(renames) => a
+            .pool()
+            .iter()
+            .map(|value| renames.get(value).map(|name| &**name))
+            .collect(),
+        None => Vec::new(),
+    };
+    let value = |code: usize| -> &str {
+        names
+            .get(code)
+            .copied()
+            .flatten()
+            .unwrap_or(&a.pool()[code])
+    };
+    let codes = 0..a.pool().len();
+    let to_b = codes
+        .clone()
+        .map(|code| index.get(value(code)).copied().unwrap_or(ABSENT))
+        .collect();
+    let hashes: Option<Vec<u64>> = names.iter().any(Option::is_some).then(|| {
+        codes
+            .map(|code| keys::text(value(code).as_bytes()))
+            .collect()
+    });
+    let renamed = hashes.map(|hashes| Renamed { names, hashes });
+    Cmp::Str {
+        a,
+        b,
+        to_b,
+        renamed,
     }
 }
 
@@ -244,6 +339,8 @@ impl RefPair<'_> {
 pub(crate) enum CellHasher<'a> {
     Plain(ValueHashes<'a>),
     Ref(&'a RefPair<'a>, usize),
+    /// A's strings through `Renamed`: hashes per pool code.
+    Renamed(&'a StrColumn, &'a [u64]),
 }
 
 impl CellHasher<'_> {
@@ -251,6 +348,9 @@ impl CellHasher<'_> {
         match self {
             CellHasher::Plain(values) => values.get_or_null(row),
             CellHasher::Ref(pair, side) => pair.hash(*side, row),
+            CellHasher::Renamed(column, hashes) => column
+                .code(row)
+                .map_or_else(keys::null, |code| hashes[code as usize]),
         }
     }
 }

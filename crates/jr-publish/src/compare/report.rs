@@ -60,7 +60,18 @@ pub fn report_json(comparison: &Comparison, verdict: &Verdict) -> String {
         .iter()
         .map(|item| json!({ "target": item.target, "a": item.counts[0], "b": item.counts[1] }))
         .collect();
+    let trip_pairing = comparison.trip_pairing.map(|pairing| {
+        json!({
+            "by_id": pairing.by_id,
+            "by_content": pairing.by_content,
+            "near": pairing.near,
+            "unpaired_a": pairing.unpaired[0],
+            "unpaired_b": pairing.unpaired[1],
+        })
+    });
     let report = json!({
+        "trip_identity": if trip_pairing.is_some() { "journey" } else { "trip_id" },
+        "trip_pairing": trip_pairing,
         "passed": verdict.passed(),
         "differences": comparison.differences(),
         "relations": relations,

@@ -14,6 +14,11 @@ pub struct Profile {
     /// ledger names them with a reason (`[[label]]`).
     pub labels: Vec<(String, String)>,
     pub trip_identity: TripIdentity,
+    /// `(relation, column)` holding a trip ID without a foreign key saying so, compared through
+    /// the trip pairing like the foreign keys to `trip`. `source_key.public_id` names the
+    /// entity its `entity_kind` says; IDs of different kinds never coincide, so translating
+    /// every renamed trip ID in it touches only trip rows.
+    pub trip_columns: Vec<(String, String)>,
     /// Absolute tolerance of a double column not listed in `tolerances`.
     pub default_tolerance: f64,
     /// Absolute tolerance by column name (in whichever relation the column appears).
@@ -43,14 +48,28 @@ pub enum Content {
     Columns,
 }
 
-/// How trips (and the rows keyed by trip) are matched between the two packages.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// How trips (and the rows that name a trip) are matched between the two packages. A parity
+/// ledger chooses it (`trip_identity = "trip_id" | "journey"`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum TripIdentity {
     /// By `trip_id`, i.e. by primary key like every other relation.
-    ///
-    /// A second strategy, "journey" (source key + service date), comes later for packages
-    /// whose trip IDs themselves differ.
+    #[default]
     TripId,
+    /// For packages whose trip IDs differ for some trips: trips with the same `trip_id` pair
+    /// by ID, the others by content (every trip column but the ID and the ordered calls), then
+    /// as near pairs (same route, dates, call count and first call, unique on both sides).
+    /// Every column naming a trip is compared through that pairing.
+    Journey,
+}
+
+impl TripIdentity {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            TripIdentity::TripId => "trip_id",
+            TripIdentity::Journey => "journey",
+        }
+    }
 }
 
 impl Default for Profile {
@@ -94,6 +113,7 @@ impl Default for Profile {
             ],
             labels: Vec::new(),
             trip_identity: TripIdentity::TripId,
+            trip_columns: vec![("source_key".to_owned(), "public_id".to_owned())],
             default_tolerance: 1e-9,
             tolerances,
             samples: 20,
