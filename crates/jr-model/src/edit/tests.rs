@@ -217,3 +217,75 @@ fn an_edit_that_breaks_an_invariant_fails_the_batch() {
         "{violations:?}"
     );
 }
+
+#[test]
+fn removing_calls_takes_what_was_stated_for_them_and_needs_two_left() {
+    use crate::timetable::{
+        ClaimDerivation, ClaimDirection, ClaimResolution, ConnectionClaim, Restriction,
+        RestrictionGroup, RestrictionScope,
+    };
+    let mut t = timetable();
+    let trip = t.trips.handles().next().unwrap();
+    let route = t.routes.handles().next().unwrap();
+    let third = t.places.push(place("33333"));
+    t.trips
+        .get_mut(trip)
+        .unwrap()
+        .calls
+        .push(call(third, 3, 20));
+    let claim = |sequence| ConnectionClaim {
+        direction: ClaimDirection::WaitsFor,
+        origin_trip: trip,
+        origin_sequence: sequence,
+        dates: None,
+        target_source_route: None,
+        target_source_trip: None,
+        target_source_stop: None,
+        target_source_post: None,
+        target_source_end_stop: None,
+        target_source_end_post: None,
+        wait_minutes: None,
+        note: None,
+        target_public_line: None,
+        target_destination_text: None,
+        derivation: ClaimDerivation::Structured,
+        resolution: ClaimResolution::Unresolved,
+        target_route: None,
+        target_trip: None,
+        target_location: None,
+        source_object: "claim".into(),
+    };
+    t.connection_claims = vec![claim(2), claim(3)];
+    t.restrictions = vec![Restriction {
+        group: RestrictionGroup::A,
+        scope: RestrictionScope::RouteStop {
+            route,
+            calls: Box::new([(trip, 1), (trip, 2)]),
+        },
+        source_route_stop: "1".into(),
+        source_object: "restriction".into(),
+    }];
+    assert_eq!(t.check(), []);
+
+    let remove = |t: &mut Timetable, sequences: Vec<i32>| {
+        let mut edits = EditBuilder::new(t, "test");
+        edits.push(RULE, Edit::RemoveCalls { trip, sequences });
+        let edits = edits.finish();
+        apply(t, edits, &precedence(), &mut Diagnostics::new())
+    };
+    remove(&mut t, vec![2]).unwrap();
+    let sequences: Vec<i32> = t.trips[trip]
+        .calls
+        .iter()
+        .map(|call| call.sequence)
+        .collect();
+    assert_eq!(sequences, [1, 3]);
+    assert_eq!(t.connection_claims.len(), 1);
+    assert_eq!(t.connection_claims[0].origin_sequence, 3);
+    let RestrictionScope::RouteStop { calls, .. } = &t.restrictions[0].scope else {
+        panic!()
+    };
+    assert_eq!(**calls, [(trip, 1)]);
+    // One call left is no trip.
+    assert!(remove(&mut t, vec![3]).is_err());
+}

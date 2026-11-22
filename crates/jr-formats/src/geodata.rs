@@ -8,6 +8,7 @@
 //! file grammar the documents state as a reviewed contract (the registry, the route rules).
 
 pub mod catalogue;
+pub mod filter_rules;
 pub mod gazetteer;
 pub mod registry;
 pub mod route_rules;

@@ -13,6 +13,7 @@
 pub mod assemble;
 pub mod batch;
 pub mod calendar;
+pub mod filtered;
 pub mod fix;
 pub mod fixed;
 pub mod holidays;
@@ -64,6 +65,7 @@ pub fn rules() -> impl Iterator<Item = jr_model::Rule> {
         fix::RULES,
         merge::RULES,
         assemble::RULES,
+        filtered::RULES,
     ]
     .into_iter()
     .flatten()

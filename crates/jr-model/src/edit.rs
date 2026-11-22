@@ -23,8 +23,8 @@ use crate::handle::{
 };
 use crate::timetable::{
     Agency, Assignment, BoardingPoint, CallKey, ConnectionClaim, CoordSource, Note, Place,
-    Position, Precision, Restriction, Route, RouteStop, Shape, SourceKey, Target, Timetable,
-    Transfer, Trip, TripShape, Violation,
+    Position, Precision, Restriction, RestrictionScope, Route, RouteStop, Scope, Shape, SourceKey,
+    Target, Timetable, Transfer, Trip, TripShape, Violation,
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -65,6 +65,14 @@ pub enum Edit {
         short_name: Option<Box<str>>,
         color: Option<Box<str>>,
         text_color: Option<Box<str>>,
+    },
+    /// Removes calls of a trip, named by their published sequences; the other calls keep
+    /// theirs. What was stated for a removed call goes with it: connection claims made at it,
+    /// travel restrictions on it, its call keys, and notes or features assigned to it or to a
+    /// range of calls that starts or ends at it. At least two calls must remain.
+    RemoveCalls {
+        trip: TripId,
+        sequences: Vec<i32>,
     },
     /// The days a trip runs. An empty service retires the trip.
     SetTripService {
@@ -466,6 +474,63 @@ fn apply_one(
                 row.text_color = text_color;
             }
             Target::Route(route)
+        }
+        Edit::RemoveCalls { trip, sequences } => {
+            let row = timetable.trips.get_mut(trip).ok_or("unknown trip")?;
+            let gone = |sequence: i32| sequences.contains(&sequence);
+            let known = sequences
+                .iter()
+                .all(|sequence| row.calls.iter().any(|call| call.sequence == *sequence));
+            if !known {
+                return Err(format!("{}: a call to remove does not exist", row.id));
+            }
+            let keep: Vec<bool> = row.calls.iter().map(|call| !gone(call.sequence)).collect();
+            if keep.iter().filter(|kept| **kept).count() < 2 {
+                return Err(format!("{}: fewer than two calls would remain", row.id));
+            }
+            let mut kept = keep.iter().copied();
+            row.calls.retain(|_| kept.next().unwrap_or(true));
+            if let Some(shape) = &mut row.shape {
+                // One offset per call.
+                shape.offsets = shape
+                    .offsets
+                    .iter()
+                    .zip(&keep)
+                    .filter_map(|(offset, kept)| kept.then_some(*offset))
+                    .collect();
+            }
+            timetable
+                .connection_claims
+                .retain(|claim| claim.origin_trip != trip || !gone(claim.origin_sequence));
+            timetable
+                .restrictions
+                .retain_mut(|restriction| match &mut restriction.scope {
+                    RestrictionScope::Call { trip: on, sequence } => {
+                        *on != trip || !gone(*sequence)
+                    }
+                    RestrictionScope::RouteStop { calls, .. } => {
+                        let kept: Vec<_> = calls
+                            .iter()
+                            .copied()
+                            .filter(|(on, sequence)| *on != trip || !gone(*sequence))
+                            .collect();
+                        *calls = kept.into_boxed_slice();
+                        !calls.is_empty()
+                    }
+                });
+            timetable
+                .call_keys
+                .retain(|key| key.trip != trip || !gone(key.sequence));
+            timetable
+                .assignments
+                .retain(|assignment| match assignment.scope {
+                    Scope::Call { trip: on, sequence } => on != trip || !gone(sequence),
+                    Scope::CallRange { trip: on, from, to } => {
+                        on != trip || !(gone(from) || gone(to))
+                    }
+                    _ => true,
+                });
+            Target::Trip(trip)
         }
         Edit::SetTripService { trip, service } => {
             timetable.trips.get_mut(trip).ok_or("unknown trip")?.service = service;

@@ -111,6 +111,9 @@ pub struct AssembleInput<'a> {
 #[derive(Debug)]
 pub struct Assembled {
     pub timetable: Timetable,
+    /// One per line version, in the merge's order: what the filtered feed's line selection
+    /// reads and the timetable does not carry.
+    pub lines: Vec<crate::filtered::LineVersion>,
     pub summary: Summary,
 }
 
@@ -200,5 +203,36 @@ pub fn assemble(
         dropped,
     };
     diagnostics.append(local);
-    Ok(Assembled { timetable, summary })
+    let lines = merged
+        .versions
+        .iter()
+        .zip(&routes)
+        .map(|(version, &route)| {
+            let name = |agency: usize| merged.agencies[agency].name.clone();
+            let mut operators = vec![name(version.agency)];
+            for alternation in &version.agency_alternations {
+                let alternate = name(alternation.agency);
+                if !operators.contains(&alternate) {
+                    operators.push(alternate);
+                }
+            }
+            crate::filtered::LineVersion {
+                route,
+                licence: version.route.id.clone(),
+                valid_to: version.route.timetable_valid_to,
+                operators,
+                preferred_systems: version
+                    .integrations
+                    .iter()
+                    .filter(|integration| integration.preferential == Some(true))
+                    .map(|integration| integration.transport_system_id)
+                    .collect(),
+            }
+        })
+        .collect();
+    Ok(Assembled {
+        timetable,
+        lines,
+        summary,
+    })
 }

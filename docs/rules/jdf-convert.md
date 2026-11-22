@@ -2026,3 +2026,30 @@ Proposed `jr-publish` projection `filtered_gtfs(timetable_pre_overlay, rules, re
   the reader now keeps the empty field, and a route needs a mode.
 - **Constants:** `jdf_convert.toml` `[modes] fallback = "A"`.
 - **Diagnostic:** `jdf_transport_mode_missing` (warning), per version.
+
+#### JDF-R479 — Filtered feed: lines other feeds publish
+- **What:** section 6.2, on the line versions the merge kept instead of on a merged JDF file. A
+  line is selected when a version of it whose published validity ends on the reference date or
+  later (or is open) names a listed operator, as its own or as an alternate operator (`Altdop`),
+  by exact name; or has a listed integrated system as its preferred `LinExt` row. One query per
+  integrated system and one for the operators (when any are listed); `line-snapshot.json` lists
+  each query's six-digit lines. A licence that is no CIS line number takes no part.
+- **Why:** section 6.2 (the docstring of Oběhy's `jdf_line_snapshot`).
+- **Constants:** `filtered-jdf/rules-v1.json` of the geodata checkout.
+
+#### JDF-R480 — Filtered feed: removal by line
+- **What:** section 6.3 steps 2–3: the trips of a route are removed when its line was selected
+  or its six-digit licence starts with a listed prefix. The licence is a fact of the line
+  version, not read out of the route ID.
+- **Constants:** `line_prefixes` of the rules file.
+
+#### JDF-R481 — Filtered feed: unplaced stops
+- **What:** section 6.3 steps 1, 4, 5: a call at a stop without a position is removed, the other
+  calls keeping their sequences; a trip left with fewer than two calls is removed. "Without a
+  position" is the model's fact, not a 0/0 coordinate.
+- **Diagnostic:** report counters `calls_removed_missing_coordinates`,
+  `trips_removed_too_few_calls`, `stops_without_coordinates`.
+
+#### JDF-R482 — Filtered feed: empty selections
+- **What:** sections 6.2 step 5 and 6.4: a query that matches no line, and a feed without a
+  trip, fail the build.

@@ -145,3 +145,17 @@ pub fn write_package(
         files::write_contents(root, &tables, timetable, diagnostics, options)
     })
 }
+
+/// Writes only the GTFS projection of the timetable, as the file `out` (which must not exist):
+/// a feed for consumers that take no package.
+pub fn write_gtfs(
+    timetable: &Timetable,
+    options: &PublishOptions,
+    out: &Path,
+) -> Result<(), PublishError> {
+    if out.exists() {
+        return Err(PublishError::OutputExists(out.to_path_buf()));
+    }
+    let tables = relations(timetable, options)?;
+    gtfs::write(out, &tables, timetable.source_version.as_deref(), options)
+}
