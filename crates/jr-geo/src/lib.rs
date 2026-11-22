@@ -2,4 +2,11 @@
 //!
 //! See ARCHITECTURE.md.
 
+pub mod areas;
+pub mod laea;
 pub mod names;
+pub mod stop_index;
+pub mod towns;
+
+#[cfg(test)]
+mod test_data;

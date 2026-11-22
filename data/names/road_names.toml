@@ -1,0 +1,33 @@
+# The road name normalisations (crates/jr-geo/src/names.rs, jr_geo::names::Profile) and the town
+# name table (crates/jr-geo/src/towns.rs). Rule IDs are those of docs/rules/jdf-read.md and
+# docs/rules/jdf-merge.md. Both profiles use the synonym table data/names/stop_synonyms.txt.
+
+# JDF-R039–R042: stop names matched against the stop catalogues, OSM and the gazetteers (the F#
+# StopMatcher's Lucene analysis). A `.` ends the token it is part of; `,`, `-` and white space
+# (U+00A0 included) separate tokens; everything else stays in the token. Synonyms expand (R040).
+[matching]
+case = "lower"
+transliteration = { " " = " " }
+word_characters = "non_whitespace"
+separators = [",", "-"]
+terminators = ["."]
+synonyms = "expand"
+
+# JDF-R214–R215: one component of a stop name normalised for stop identity across batches (the
+# F# JdfStopReconciliation.tokenize). U+00A0 becomes a space before the replacements, so
+# `n. l.` is expanded too.
+[identity]
+case = "lower"
+transliteration = { " " = " " }
+replacements = [["n.l.", "nad labem"], ["n. l.", "nad labem"]]
+word_characters = "alphanumeric"
+terminators = ["."]
+synonyms = "canonical"
+trim_unmapped = ["."]
+
+# JDF-R054: a town name as timetables write it to the municipality name it is looked up as
+# (exact, case-sensitive key).
+[town_synonyms]
+"Dolní Malá Úpa" = "Malá Úpa"
+"Horní Malá Úpa" = "Malá Úpa"
+"Podhořany u Ronova n.D." = "Podhořany u Ronova"

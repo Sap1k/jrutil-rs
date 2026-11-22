@@ -1,14 +1,37 @@
-//! The one name normaliser (AGENTS.md rule 5) and the matching built on it: normalised forms,
-//! railway name cores, edit similarity and protected qualifiers (`docs/rules/czptt.md`,
-//! CZPTT-R090–R093).
+//! The one name normaliser (AGENTS.md rule 5) and the matching built on it.
 //!
-//! Word lists and tables are data ([`NameTables`], deserialised from a policy file), never
+//! Every normalisation is a [`Profile`] of one machinery (`profile`): characters mapped
+//! (transliteration, marks, case), phrases replaced, the text cut into tokens by one character
+//! classification, and then, per profile, the synonym table applied (`analyzer`, `synonyms`).
+//! Three profiles exist:
+//!
+//! - rail point names (`docs/rules/czptt.md`, CZPTT-R090): transliterated, marks removed,
+//!   upper-case, letters and numbers only; on top of it the railway name core, edit similarity
+//!   and protected qualifiers (R091–R093);
+//! - road stop matching (`docs/rules/jdf-read.md`, JDF-R039–R042): lower-case, diacritics kept,
+//!   tokens cut at white space, `,` and `-` and after a `.`; synonyms expand
+//!   ([`Analyzer::expansion`]) and names compare by [`Analyzer::name_match`];
+//! - road stop identity (`docs/rules/jdf-merge.md`, JDF-R214–R215): lower-case, `n.l.` expanded,
+//!   letters, numbers and a closing `.`; each token replaced by its canonical synonym.
+//!
+//! Word lists and tables are data ([`NameTables`] from the rail policy, the road profiles from
+//! `data/names/road_names.toml`, the synonym table `data/names/stop_synonyms.txt`), never
 //! literals here. Lengths and edit distances count Unicode scalar values (`char`s).
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+mod analyzer;
+mod profile;
+mod synonyms;
+
+use std::collections::{BTreeMap, BTreeSet};
 
 use jr_model::Rule;
 use serde::Deserialize;
+
+pub use analyzer::{Analyzer, NameMatch};
+pub use profile::{Case, Profile, SynonymUse, WordCharacters};
+pub use synonyms::SynonymConflict;
+
+use profile::CharacterMap;
 
 /// A name's comparable form: transliterated (the table, for example `ß→ss`, `Ł→L` and the
 /// decompositions of accented Latin letters), combining marks removed, every run of characters
@@ -56,12 +79,73 @@ pub const CZPTT_R093: Rule = Rule {
     summary: "fuzzy name matches keep every protected qualifier token of the expected name",
 };
 
+/// The matching profile's tokens: the name lower-cased, cut at white space, `,` and `-` and
+/// after every `.` (a `.` stays on the token it ends: `hl.nádr.` is `hl.` `nádr.`); diacritics
+/// and other punctuation are kept (`(Hlavní` is a token). The query is the JDF name triple
+/// joined by commas. Lower-casing is culture-free (fixes B22).
+///
+/// CIS spellings run abbreviations together (`Ústí n.L.,hl.nádr.`) and mix hyphens, commas and
+/// spaces between the parts of one stop name (`Praha-Dejvice`, `Praha,,Dejvice`).
+pub const JDF_R039: Rule = Rule {
+    id: "JDF-R039",
+    summary: "stop-match tokens: lower-case, cut at white space , - and after each dot",
+};
+
+/// A token stands for its expansion: itself and every word of every synonym line naming it
+/// (lines with a shared alternative are not merged, so `labem` and `lázně` both relate to `l.`
+/// but not to each other). A multi-word alternative (`obecní úřad`) adds its line's words to a
+/// candidate whose tokens contain it in sequence.
+///
+/// Catalogues, OSM and timetables abbreviate the same words differently (`nám.` / `náměstí`,
+/// `aut.st.` / `aut.nádr.`).
+pub const JDF_R040: Rule = Rule {
+    id: "JDF-R040",
+    summary: "stop-match synonyms expand each token to every alternative of every line naming it",
+};
+
+/// A candidate's quality is the share of its tokens whose expansion meets the expansion of the
+/// query; it is exact when that share is 1. The sequence predicate compares two token lists
+/// position by position by their expansions.
+///
+/// A stop name must be accounted for in full by the timetable's name before it positions the
+/// stop: `Hostivice` must not take the place of `Hostivice-Sadová`.
+pub const JDF_R042: Rule = Rule {
+    id: "JDF-R042",
+    summary: "a candidate is exact when every one of its tokens is related to a query token",
+};
+
+/// The identity tokens of one name component: lower-cased, `n.l.` and `n. l.` replaced by
+/// `nad labem`, cut into runs of letters, numbers and a closing `.`, each token replaced by its
+/// canonical synonym (R215) or else stripped of trailing dots, empty tokens dropped.
+///
+/// The same stop is spelled with and without abbreviations across batches (`Ústí
+/// n.L.,hl.nádr.` and `Ústí nad Labem,Hlavní nádraží`).
+pub const JDF_R214: Rule = Rule {
+    id: "JDF-R214",
+    summary: "stop identity tokens: lower-case, n.l. expanded, canonical synonyms, dots trimmed",
+};
+
+/// The canonical form of a synonym line is its longest alternative (ties: the smallest); a
+/// token named by several lines takes the canonical form of the last (`h.` → `horách`, `l.` →
+/// `lázně`, `nad` → `nisou`). The table is the shared file, conflicting lines included
+/// (verdict Q6); [`Analyzer::synonym_conflicts`] lists them.
+///
+/// Abbreviations must collapse to one spelling for spellings to compare as equal; changing the
+/// table moves stop identities and provisional numbers.
+pub const JDF_R215: Rule = Rule {
+    id: "JDF-R215",
+    summary: "a synonym line canonicalises to its longest alternative; later lines override",
+};
+
+/// The road rules of this module. The rail rules (CZPTT-R090–R093) are listed by the rail
+/// coordinates pass that applies them.
+pub const RULES: &[Rule] = &[JDF_R039, JDF_R040, JDF_R042, JDF_R214, JDF_R215];
+
 /// The word lists and tables of the name rules, compiled for lookup when deserialised.
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(try_from = "RawNameTables")]
 pub struct NameTables {
-    transliteration: HashMap<char, Box<str>>,
-    marks: Vec<(char, char)>,
+    profile: Profile,
     railway_suffixes: BTreeSet<String>,
     route_section_prefix: String,
     qualifier_open: char,
@@ -92,17 +176,9 @@ impl TryFrom<RawNameTables> for NameTables {
     type Error = String;
 
     fn try_from(raw: RawNameTables) -> Result<Self, String> {
-        let mut transliteration = HashMap::new();
-        for (from, to) in raw.transliteration {
-            let mut chars = from.chars();
-            let (Some(character), None) = (chars.next(), chars.next()) else {
-                return Err(format!("transliteration key `{from}` is not one character"));
-            };
-            transliteration.insert(character, to.into_boxed_str());
-        }
+        let characters = CharacterMap::new(raw.transliteration, raw.marks, profile::Case::Upper)?;
         let mut tables = NameTables {
-            transliteration,
-            marks: raw.marks,
+            profile: Profile::rail(characters),
             railway_suffixes: BTreeSet::new(),
             route_section_prefix: String::new(),
             qualifier_open: raw.qualifier_open,
@@ -127,12 +203,6 @@ impl TryFrom<RawNameTables> for NameTables {
 }
 
 impl NameTables {
-    fn is_mark(&self, character: char) -> bool {
-        self.marks
-            .iter()
-            .any(|&(first, last)| (first..=last).contains(&character))
-    }
-
     fn is_railway_suffix(&self, token: &str) -> bool {
         self.railway_suffixes.contains(token)
             || token
@@ -143,38 +213,9 @@ impl NameTables {
     }
 }
 
-/// CZPTT-R090.
+/// CZPTT-R090: the rail profile's tokens joined by one space.
 pub fn normalize(name: &str, tables: &NameTables) -> String {
-    let mut transliterated = String::with_capacity(name.len());
-    for character in name.chars() {
-        match tables.transliteration.get(&character) {
-            Some(replacement) => transliterated.push_str(replacement),
-            None => transliterated.push(character),
-        }
-    }
-    let mut out = String::with_capacity(transliterated.len());
-    let mut gap = false;
-    for character in transliterated.chars() {
-        if tables.is_mark(character) {
-            continue;
-        }
-        if !character.is_alphanumeric() {
-            gap = true;
-            continue;
-        }
-        if gap && !out.is_empty() {
-            out.push(' ');
-        }
-        gap = false;
-        // Simple (one-to-one) case mapping: a character whose upper case is several
-        // characters stays as it is.
-        let mut upper = character.to_uppercase();
-        out.push(match (upper.next(), upper.next()) {
-            (Some(single), None) => single,
-            _ => character,
-        });
-    }
-    out
+    tables.profile.raw_tokens(name).join(" ")
 }
 
 /// CZPTT-R091, on a raw name.
@@ -333,3 +374,6 @@ fn similarity_bound(left: &[char], right: &[char]) -> f64 {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod road_tests;

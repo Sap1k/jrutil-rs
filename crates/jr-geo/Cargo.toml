@@ -10,6 +10,7 @@ publish.workspace = true
 [dependencies]
 jr-model.workspace = true
 serde.workspace = true
+rayon.workspace = true
 
 [dev-dependencies]
 toml.workspace = true
