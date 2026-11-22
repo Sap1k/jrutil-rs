@@ -17,6 +17,9 @@ pub struct Path {
     /// The calendar's `StartDateTime` date as the source gives it (not shifted by R066): the
     /// date catalogue versions are chosen at (R056).
     pub first_date: Date,
+    /// How many days R066 moved the dates back (0 when no time was negative). Source dates
+    /// that name the day of offset 0 (note calendars) are `dates` moved forward by this.
+    pub day_shift: u16,
     /// Root-level `NetworkSpecificParameter`s, in source order.
     pub parameters: Vec<Parameter>,
     /// Every location, normalized (R026–R040, R066), in source order.
@@ -88,6 +91,13 @@ pub struct SegmentKey {
     pub route_type: i32,
     pub category: Box<str>,
     pub replacement_bus: bool,
+}
+
+impl Part {
+    /// The part's passenger calls, in order.
+    pub fn passenger_calls(&self) -> impl Iterator<Item = &Call> {
+        self.calls.iter().filter(|call| call.passenger)
+    }
 }
 
 /// One trip part of a path.

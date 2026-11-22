@@ -309,7 +309,7 @@ fn fixture() -> Fixture {
     t.trips.push(Trip {
         shape: Some(TripShape {
             shape,
-            offsets: vec![0.0, 15_000.0].into(),
+            offsets: vec![Some(0.0), Some(15_000.0)].into(),
         }),
         ..trip(
             czptt::trip(other_path, 1),

@@ -90,6 +90,8 @@ pub(crate) const R066: Rule = Rule {
 pub(crate) struct Normalized {
     pub calls: Vec<Call>,
     pub dates: DateSet,
+    /// Days R066 moved the dates back.
+    pub day_shift: u16,
     pub rejection: Option<Rejection>,
     /// Line boundary moves (R040), reported only for accepted paths.
     pub adjustments: Vec<Adjustment>,
@@ -108,7 +110,7 @@ pub(crate) fn normalize(
 ) -> Normalized {
     let mut calls = calls(pa, message, tr_company, catalog, policy, diagnostics);
     repair::repair_inconsistent_times(pa, &message.locations, &mut calls, policy, diagnostics);
-    let dates = shift_negative_times(pa, &mut calls, dates, horizon, diagnostics);
+    let (dates, day_shift) = shift_negative_times(pa, &mut calls, dates, horizon, diagnostics);
     let rejection = if !calls.iter().any(|call| call.passenger) {
         diagnostics.push(
             Diagnostic::new(
@@ -132,6 +134,7 @@ pub(crate) fn normalize(
     Normalized {
         calls,
         dates,
+        day_shift,
         rejection,
         adjustments,
     }
@@ -392,14 +395,14 @@ fn shift_negative_times(
     dates: DateSet,
     horizon: Horizon,
     diagnostics: &mut Diagnostics,
-) -> DateSet {
+) -> (DateSet, u16) {
     let earliest = calls
         .iter()
         .flat_map(|call| [call.arrival, call.departure])
         .flatten()
         .min();
     let Some(earliest) = earliest.filter(|seconds| *seconds < 0) else {
-        return dates;
+        return (dates, 0);
     };
     let day = i64::from(ServiceTime::DAY);
     let days = (-i64::from(earliest) + day - 1) / day;
@@ -428,5 +431,5 @@ fn shift_negative_times(
         )
         .rule(R066),
     );
-    moved
+    (moved, days as u16)
 }

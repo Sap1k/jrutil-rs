@@ -156,7 +156,7 @@ pub fn trip_call(p: &Published) -> Result<Table, PublishError> {
                 double(calls().map(|(trip, index, _)| {
                     trip.shape
                         .as_ref()
-                        .and_then(|s| s.offsets.get(index).copied())
+                        .and_then(|s| s.offsets.get(index).copied().flatten())
                 }))
             }),
         ),

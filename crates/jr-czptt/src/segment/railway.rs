@@ -37,6 +37,7 @@ pub(crate) fn assign(pa: &str, parts: &mut [Part], path: &[Call], diagnostics: &
     for call in path.iter().filter(|call| !call.passenger) {
         let index = call.index;
         let owner = parts.iter().zip(&bounds).position(|(part, &(low, high))| {
+            // R047: a replacement-bus part takes none.
             !part.key.replacement_bus
                 && ((low < index && index < high)
                     || (low == path_low && index < low)

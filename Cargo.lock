@@ -668,6 +668,8 @@ dependencies = [
  "jr-model",
  "rayon",
  "serde",
+ "serde_json",
+ "sha2",
  "toml",
 ]
 
@@ -756,7 +758,16 @@ name = "jrutil"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "jr-czptt",
+ "jr-enrich",
+ "jr-formats",
+ "jr-model",
  "jr-publish",
+ "rayon",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
  "toml",
 ]
 

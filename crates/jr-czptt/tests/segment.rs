@@ -149,10 +149,24 @@ fn r046_mode_blocks_count_switches_between_rail_and_bus() {
 }
 
 #[test]
-fn r047_a_bus_flag_between_railway_points_leaves_no_bus_part() {
-    // Parts are cut from passenger calls, so a replacement bus between two railway points
-    // never forms a part of fewer than two passenger calls.
-    let (path, diagnostics) = compile_one(timetable(vec![
+fn r047_a_replacement_bus_part_holds_passenger_calls_only() {
+    let (path, _) = compile_one(timetable(vec![
+        stop("57076", "08:00:00"),
+        bus(stop("57050", "08:10:00"), "1"),
+        bus(point("93001", "08:15:00"), "1"),
+        bus(stop("57016", "08:20:00"), "0"),
+        stop("54357", "09:00:00"),
+    ]));
+    let bus_part = path
+        .parts
+        .iter()
+        .find(|p| p.key.replacement_bus)
+        .expect("bus");
+    assert!(bus_part.calls.iter().all(|call| call.passenger));
+    assert_eq!(sequences(&bus_part.calls), [2, 4]);
+
+    // A bus flag between two railway points therefore never forms a part.
+    let (path, _) = compile_one(timetable(vec![
         stop("57076", "08:00:00"),
         bus(point("93001", "08:05:00"), "1"),
         bus(point("93002", "08:10:00"), "0"),
@@ -161,13 +175,12 @@ fn r047_a_bus_flag_between_railway_points_leaves_no_bus_part() {
     assert_eq!(path.parts.len(), 1);
     assert!(!path.parts[0].key.replacement_bus);
     assert_eq!(sequences(&path.parts[0].calls), [1, 2, 3, 4]);
-    assert!(!has(&diagnostics, "czptt_replacement_bus_part_dropped"));
 }
 
 #[test]
-fn r048_parts_that_share_their_boundary_call_carry_one_time_there() {
-    // The untimed boundary is one call of both parts, so there is no timed counterpart to copy;
-    // both copies are interpolated alike (R049) between 08:05 and 08:20.
+fn r049_parts_that_share_an_untimed_boundary_call_carry_one_interpolated_time() {
+    // The untimed boundary is one call of both parts (R048, copying a timed counterpart, is
+    // gone); both copies are interpolated alike between 08:05 and 08:20.
     let (path, diagnostics) = compile_one(timetable(vec![
         stop("57076", "08:00:00"),
         bus(
@@ -188,7 +201,10 @@ fn r048_parts_that_share_their_boundary_call_carry_one_time_there() {
         (right.arrival, right.departure)
     );
     assert!(left.inferred && right.inferred);
-    assert!(!has(&diagnostics, "czptt_edge_time_copied"));
+    assert_eq!(
+        messages_of(&diagnostics, "czptt_edge_time_interpolated").len(),
+        2
+    );
 }
 
 #[test]

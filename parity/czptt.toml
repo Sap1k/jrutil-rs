@@ -1,0 +1,62 @@
+# Rail package: every expected difference between the F# JrUtil reference and jrutil-rs on the
+# golden subset (docs/golden.md), with its reason. Anything not listed here fails the comparison.
+#
+#   jrutil compare <root>/czptt/fs/package <root>/czptt/rs/package --expect parity/czptt.toml
+#
+# Counts are those of the 5% subset. Rule and question numbers refer to docs/rules/czptt.md and
+# docs/rules/serving.md.
+
+[[category]]
+name = "country-code-published"
+matches = "location.changed.country_code"
+reason = "F# published a country only for railway points that are not stops. Every rail location now carries its country (serving verdict 2)."
+a = "^$"
+max = 7200
+
+[[category]]
+name = "unused-operational-points"
+matches = "location.missing"
+reason = "F# listed every railway point of an accepted path, including points no trip part calls at (inside a replacement-bus part, or past a dropped part). A place nothing refers to is not published."
+key = "^czptt:stop:[A-Z]{2}:[0-9]{5}$"
+max = 30
+
+[[category]]
+name = "unused-operational-point-keys"
+matches = "source_key.missing"
+reason = "The SR70 keys of the unpublished railway points above."
+key = "^sr70\\|"
+max = 30
+
+[[category]]
+name = "notes-of-rejected-paths"
+matches = "service_note.missing"
+reason = "F# published the notes of paths it rejected, linked to nothing (B10). Notes are published only for accepted paths (Q13)."
+max = 60
+
+[[category]]
+name = "stop-pair-transfers"
+matches = "transfer.missing"
+reason = "F# stored the MOTIS form of a rail to replacement-bus transfer: a zero-minute stop pair without trips (R084). The relation now holds the transfer between the two trips (Q14); transfers.txt in gtfs.zip is unchanged."
+key = "\\|null\\|null\\|null\\|null\\|2\\|0\\|null$"
+max = 460
+
+[[category]]
+name = "trip-transfers"
+matches = "transfer.extra"
+reason = "The timed transfers between a train and its replacement bus, one per pair of trips (Q14)."
+key = "\\|1\\|0\\|null$"
+max = 1020
+
+[[category]]
+name = "osm-candidate-order-latitude"
+matches = "location.changed.latitude"
+reason = "Equally ranked OpenStreetMap candidates are ordered by numeric node ID, not by the ID as text (R025), so a few foreign stations sit on a neighbouring node a few metres away."
+key = "^czptt:stop:(AT|DE|PL|SK):"
+max = 12
+
+[[category]]
+name = "osm-candidate-order-longitude"
+matches = "location.changed.longitude"
+reason = "As for the latitude."
+key = "^czptt:stop:(AT|DE|PL|SK):"
+max = 12

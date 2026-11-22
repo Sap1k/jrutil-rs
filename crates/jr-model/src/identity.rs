@@ -147,6 +147,28 @@ pub fn route_stop(
     )
 }
 
+/// A shape the compiler generated is its geometry: `<feed>:shape:<method>:<20 hex>` of the
+/// mode class and the points at seven decimals, so trips over the same path share one shape.
+pub fn generated_shape(feed: Feed, method: &str, class: &str, points: &[crate::Coord]) -> PublicId {
+    let mut hasher = Sha256::new();
+    hasher.update(class.as_bytes());
+    for point in points {
+        hasher.update(
+            format!(
+                "
+{:.7},{:.7}",
+                point.lat, point.lon
+            )
+            .as_bytes(),
+        );
+    }
+    let hex: String = hasher.finalize()[..10]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    PublicId(format!("{}:shape:{method}:{hex}", feed.prefix()).into_boxed_str())
+}
+
 /// A row that has no natural key (an assignment, a transfer): `<feed>:<kind>:<32 hex>` of
 /// its defining fields, given in a fixed order by the projection that publishes it.
 pub fn content(feed: Feed, kind: &str, fields: &[(&str, &str)]) -> PublicId {

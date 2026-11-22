@@ -79,3 +79,114 @@ categories = ["NJ", "EN", "ES"]
 # CZPTT-R043, R047: the fewest calls a path or a replacement-bus part may have.
 [parts]
 minimum_calls = 2
+
+# CZPTT-R053, R080: the zone of stop places and agencies; operational points have none.
+[places]
+timezone = "Europe/Prague"
+
+# CZPTT-R054, R055: where a replacement bus calls at a station.
+[replacement_bus_point]
+public_code = "BUS"
+description = "Pro přesné informace k nástupišti náhradní dopravy sledujte informace dopravce."
+
+# CZPTT-R080: agencies from KADR companies.
+[agencies]
+timezone = "Europe/Prague"
+language = "cs"
+# A catalogue name is cut at the first occurrence of this qualifier separator.
+qualifier_separator = " - "
+# The name of an operator the catalogue lacks: `<prefix><code>`.
+unknown_name_prefix = "Unknown "
+# Prepended to a URL without a scheme; only these schemes are kept.
+default_scheme = "https"
+schemes = ["http", "https"]
+# A missing or unusable company URL becomes this (GTFS requires agency_url).
+default_url = "https://portal.cisjr.cz/"
+
+# CZPTT-R058, R061: route labels and colours.
+[routes]
+replacement_bus_suffix = " (NAD)"
+text_color = "ffffff"
+default_color = "475569"
+
+[[routes.colors]]
+route_type = 106
+color = "1c1745"
+
+[[routes.colors]]
+route_type = 102
+color = "b91c1c"
+
+[[routes.colors]]
+route_type = 103
+color = "b45309"
+
+[[routes.colors]]
+route_type = 105
+color = "4c1d95"
+
+# Serving §4 rows 9 and 10: which places carry an `sr70` key.
+[keys]
+sr70_country = "CZ"
+sr70_code_length = 5
+
+# CZPTT-R071–R075: note parameters, their fields and the note ID kinds.
+[notes]
+central = "CZCentralPTTNote"
+local = "CZNonCentralPTTNote"
+calendar = "CZCalendarPTTNote"
+field_separator = "|"
+date_format = "%Y%m%d"
+central_kind = "central"
+local_kind = "noncentral"
+calendar_kind = "calendar"
+
+# CZPTT-R070, R077: central note codes and what they say about a trip.
+[features]
+wheelchair_codes = ["17", "34"]
+bicycle_codes = ["22", "26", "27", "28", "29"]
+bicycle_prohibited_codes = ["36"]
+
+[[features.central]]
+code = "17"
+kinds = ["wheelchair_accessible_vehicle", "wheelchair_booking_recommended"]
+
+[[features.central]]
+code = "34"
+kinds = ["wheelchair_accessible_vehicle", "wheelchair_booking_required"]
+
+[[features.central]]
+code = "22"
+kinds = ["bicycle_transport", "bicycle_carry_on"]
+
+[[features.central]]
+code = "26"
+kinds = ["bicycle_transport", "bicycle_storage", "bicycle_reservation_available"]
+
+[[features.central]]
+code = "27"
+kinds = ["bicycle_transport", "bicycle_storage", "bicycle_reservation_required"]
+
+[[features.central]]
+code = "28"
+kinds = ["bicycle_transport", "bicycle_carry_on", "bicycle_reservation_available"]
+
+[[features.central]]
+code = "29"
+kinds = ["bicycle_transport", "bicycle_carry_on", "bicycle_reservation_required"]
+
+[[features.central]]
+code = "36"
+kinds = ["bicycle_transport_prohibited"]
+
+# CZPTT-R085, R086: IDS zone memberships.
+[zones]
+parameter = "CZIPTS"
+# The catalogue note names a fare band as `… <word> <band>` (case-insensitive).
+fare_band_word = "pásmo"
+system_separator = "_"
+
+# CZPTT-R083: connections between a separately published replacement bus and its train.
+[connections]
+max_gap_seconds = 600
+train_number_offset = 300000

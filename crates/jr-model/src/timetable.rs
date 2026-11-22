@@ -301,8 +301,9 @@ pub struct Run {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TripShape {
     pub shape: ShapeId,
-    /// Metres from the shape's first point, one per call.
-    pub offsets: Box<[f64]>,
+    /// Metres from the shape's first point, one entry per call; `None` for a call the shape
+    /// was not matched through (its place has no exact position).
+    pub offsets: Box<[Option<f64>]>,
 }
 
 /// One visit of a trip to a place. Kept small: there are millions.

@@ -5,21 +5,53 @@
 //!
 //! See ARCHITECTURE.md.
 
+pub mod connections;
 pub mod path;
 pub mod policy;
 
+mod assemble;
 mod merge;
 mod normalize;
+mod notes;
 mod order;
 mod segment;
 mod timing;
+mod transfers;
 
 use jr_formats::czptt::ObjectType;
 use jr_formats::kadr::Catalog;
 use jr_model::{Diagnostics, Horizon, Rule};
 use rayon::prelude::*;
 
+pub use assemble::Summary;
 pub use policy::Policy;
+
+/// Catalogue (SR70) names of points: `(country, code)` to name.
+pub type PointNames = std::collections::BTreeMap<(Box<str>, Box<str>), Box<str>>;
+
+/// The compiled timetable and what went into it.
+#[derive(Debug)]
+pub struct Compiled {
+    pub timetable: jr_model::Timetable,
+    pub summary: Summary,
+}
+
+/// Messages to timetable: [`paths`], then the assembly of places, routes, trips, notes, zones
+/// and in-path transfers. The replacement-bus connections are a separate pass
+/// ([`connections::nad_connections`]).
+pub fn compile(
+    messages: Vec<SourceMessage>,
+    catalog: &Catalog,
+    point_names: &PointNames,
+    timetable_year: i16,
+    policy: &Policy,
+    diagnostics: &mut Diagnostics,
+) -> Result<Compiled, CompileError> {
+    let paths = paths(messages, catalog, timetable_year, policy, diagnostics)?;
+    let (timetable, summary) =
+        assemble::assemble(&paths, catalog, point_names, policy, diagnostics);
+    Ok(Compiled { timetable, summary })
+}
 
 /// Paths are processed in ordinal order of their PA identifier text, so every later
 /// first-wins choice is deterministic.
@@ -62,15 +94,46 @@ pub const RULES: &[Rule] = &[
     segment::R045,
     segment::R046,
     segment::R047,
-    segment::R048,
     segment::R049,
     segment::R050,
     segment::R051,
+    assemble::R052,
+    assemble::R053,
+    assemble::R054,
+    assemble::R055,
+    assemble::R056,
+    assemble::R057,
+    assemble::R058,
+    assemble::R059,
+    assemble::R060,
+    assemble::R061,
+    assemble::R062,
+    assemble::R063,
+    assemble::R064,
     merge::R065,
     normalize::R066,
+    assemble::R067,
+    assemble::R068,
+    assemble::R069,
+    notes::R070,
+    notes::R071,
+    notes::R072,
+    notes::R073,
+    notes::R074,
+    notes::R075,
+    notes::R076,
+    notes::R077,
+    notes::R078,
+    notes::R079,
+    assemble::R080,
     merge::R081,
+    transfers::R082,
+    connections::R083,
+    notes::R085,
+    notes::R086,
     merge::R116,
     segment::R117,
+    assemble::R118,
 ];
 
 /// One source message as the caller read it.
@@ -146,14 +209,30 @@ pub fn paths(
         })
         .collect();
     let mut paths = Vec::with_capacity(compiled.len());
+    let mut cancelled = merged.cancelled;
     for (path, sink) in compiled {
         diagnostics.append(sink);
+        // R016: a path left without days by anything after the merge (R066) is cancelled.
+        if path.dates.is_empty() {
+            diagnostics.push(
+                jr_model::Diagnostic::new(
+                    "czptt_path_cancelled",
+                    jr_model::Severity::Info,
+                    &*path.pa,
+                    "no running day is left",
+                )
+                .rule(merge::R016),
+            );
+            cancelled.push(path.pa);
+            continue;
+        }
         paths.push(path);
     }
+    cancelled.sort();
     Ok(Paths {
         horizon,
         paths,
-        cancelled: merged.cancelled,
+        cancelled,
         source_version: merged.source_version,
     })
 }
@@ -184,6 +263,8 @@ fn compile_path(
     );
     let (parts, rejection) = match normalized.rejection {
         Some(rejection) => (Vec::new(), Some(rejection)),
+        // Cancelled by the caller (R016): no parts.
+        None if normalized.dates.is_empty() => (Vec::new(), None),
         None => match segment::segment(&merged.pa, &normalized.calls, policy, diagnostics) {
             Ok(parts) => {
                 normalize::report_adjustments(&merged.pa, &normalized.adjustments, diagnostics);
@@ -199,6 +280,7 @@ fn compile_path(
         tr_core,
         dates: normalized.dates,
         first_date: message.calendar.start.local.date(),
+        day_shift: normalized.day_shift,
         parameters: message.parameters,
         calls: normalized.calls,
         parts,

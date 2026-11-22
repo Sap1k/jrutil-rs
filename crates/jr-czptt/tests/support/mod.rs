@@ -6,12 +6,12 @@
 
 use jiff::civil::{Date, DateTime, Time, date};
 use jr_czptt::path::{Call, Path};
-use jr_czptt::{Paths, Policy, SourceMessage};
+use jr_czptt::{Compiled, Paths, PointNames, Policy, SourceMessage};
 use jr_formats::czptt::{
     Calendar, CancellationMessage, Identifier, Location, Message, ObjectType, Parameter,
     Subsidiary, Timestamp, TimetableMessage, Timing,
 };
-use jr_formats::kadr::{Catalog, CodeLabel};
+use jr_formats::kadr::{Catalog, CentralNote, CodeLabel, Company, IdsSystem, Line};
 use jr_model::Diagnostics;
 
 pub const PA: &str = "Pa:54:000000001234:00:2026";
@@ -193,7 +193,47 @@ pub fn catalog() -> Catalog {
     for code in ["EC", "IC", "RJ", "rj", "Ex", "R", "Os", "Sp"] {
         commercial.push(label(code, code));
     }
+    let line = |code: &str, mark: &str, name: &str| Line {
+        code: code.into(),
+        abbreviation: None,
+        mark: Some(mark.into()),
+        name: Some(name.into()),
+        valid_from: Some(date(2025, 12, 14)),
+        valid_to: Some(date(2026, 12, 12)),
+    };
+    let company = |code: &str, name: &str, url: Option<&str>| Company {
+        code: code.into(),
+        name: Some(name.into()),
+        url: url.map(Box::from),
+    };
+    let ids = |code: &str, abbreviation: &str, note: &str| IdsSystem {
+        code: code.into(),
+        abbreviation: Some(abbreviation.into()),
+        name: Some("PID".into()),
+        note: Some(note.into()),
+        valid_from: Some(date(2025, 12, 14)),
+        valid_to: Some(date(2026, 12, 12)),
+    };
     Catalog {
+        lines: vec![
+            line("101", "S1", "Praha – Kolín"),
+            line("112", "S12", "Poříčany – Nymburk"),
+        ],
+        companies: vec![
+            company("54", "České dráhy, a.s. - peáž DB Netz", Some("www.cd.cz")),
+            company("80", "Česko-německá dráha - žadatel", None),
+        ],
+        ids: vec![
+            ids("11", "PID_PrahaP", "PID pásmo P"),
+            ids("12", "PID_PrahaB", "PID pásmo B"),
+        ],
+        central_notes: vec![CentralNote {
+            code: "36".into(),
+            name: Some("Bicycles prohibited".into()),
+            text: None,
+            valid_from: None,
+            valid_to: None,
+        }],
         commercial_train_types: commercial,
         train_types: ["Os", "Sp", "R", "Ex"]
             .into_iter()
@@ -245,4 +285,57 @@ pub fn sequences(calls: &[Call]) -> Vec<u32> {
 
 pub fn hms(h: i32, m: i32, s: i32) -> i32 {
     h * 3600 + m * 60 + s
+}
+
+/// The timetable compiled from `messages` with the test catalogue.
+pub fn compile_timetable(messages: Vec<SourceMessage>) -> (Compiled, Diagnostics) {
+    compile_named(messages, &PointNames::new())
+}
+
+pub fn compile_named(messages: Vec<SourceMessage>, names: &PointNames) -> (Compiled, Diagnostics) {
+    let mut diagnostics = Diagnostics::new();
+    let compiled = jr_czptt::compile(
+        messages,
+        &catalog(),
+        names,
+        2026,
+        &Policy::builtin(),
+        &mut diagnostics,
+    )
+    .expect("compiles");
+    assert_eq!(
+        compiled.timetable.check(),
+        [],
+        "the timetable is well formed"
+    );
+    (compiled, diagnostics)
+}
+
+/// One annual timetable message, compiled to a timetable.
+pub fn timetable_of(message: TimetableMessage) -> (jr_model::Timetable, Diagnostics) {
+    let (compiled, diagnostics) = compile_timetable(vec![annual(1, message)]);
+    (compiled.timetable, diagnostics)
+}
+
+/// Sets the core of every identifier and the train number of every location.
+pub fn numbered(mut message: TimetableMessage, core: &str, number: &str) -> TimetableMessage {
+    for identifier in &mut message.identifiers {
+        identifier.core = core.into();
+    }
+    for location in &mut message.locations {
+        location.operational_train_number = Some(number.into());
+    }
+    message
+}
+
+pub fn root(mut message: TimetableMessage, name: &str, value: &str) -> TimetableMessage {
+    message.parameters.push(Parameter {
+        name: name.into(),
+        value: value.into(),
+    });
+    message
+}
+
+pub fn text(timetable: &jr_model::Timetable, sym: Option<jr_model::Sym>) -> Option<&str> {
+    timetable.strings.get_opt(sym)
 }

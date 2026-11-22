@@ -56,7 +56,7 @@ timetable and 6,691 cancellation messages, 67,521 locations).
 |---|---|
 | Q1 | Keep `Pa:…` / `Tr:…`. They are published keys and part of every trip ID. The model holds the identifier as fields and renders this form in one place. |
 | Q2 | The calendar is the calendar of day offset 0. A PA with a negative time is moved as a whole: times forward by whole days, its dates back by the same days (fixes B3). The horizon is widened by a day at the start for this. |
-| Q3 | One interval resolver (R071): a code with a two-letter prefix matches country and code, a bare code matches the code; a blank occurrence means the first match for a start and the last match at or after the start for an end; an explicit occurrence `n` is the `n`-th match, 1-based, and is diagnosed (`czptt_explicit_occurrence`) because no real message has one. |
+| Q3 | One interval resolver (R071): a code with a two-letter prefix matches country and code, a bare code matches the code; a blank occurrence means the first match in the path, for a start and an end alike, and only when that first match of the end lies before the start, the first match at or after the start; an explicit occurrence `n` is the `n`-th match, 1-based, and is diagnosed (`czptt_explicit_occurrence`) because no real message has one. |
 | Q4 | The offset in `Time` is read and ignored (local wall time). Naive timestamps are Europe/Prague. |
 | Q5 | Four columns, no header. A row with an unusable coordinate poisons its code (port R019). |
 | Q6 | Keep the `public_transport` branch (port R022); the contract text is corrected at the switch. |
@@ -2257,3 +2257,27 @@ zone memberships (with calendar), transfers as trip-to-trip facts, per-entity di
 - **Constants:** none.
 - **Diagnostic:** `czptt_railway_points_unassigned` (info), once per path, listing the
   sequences of points that belong to no part.
+
+#### CZPTT-R118 — National keys of trips and points
+- **What:** every trip carries `czptt:pa` (the PA identifier text), `czptt:tr` (the TR
+  identifier text, when the message has one) and `czptt:train_number` (the part's train number,
+  R057, only when it is non-empty and all ASCII digits), each valid from the first to the last
+  running date of the trip. Every place whose country is `keys.sr70_country` and whose code is
+  `keys.sr70_code_length` ASCII digits carries `sr70` = the code; every `Track` boarding point of
+  such a place carries `sr70:track` = `<code>:<subsidiary code>` (serving verdict 16). Place and
+  track keys are valid from the first to the last running date over all trips. Binding
+  `identity`; no call keys (serving verdict 3).
+- **Where:** `jr-czptt` `assemble.rs`.
+- **Why:** realtime and other feeds find trains and railway points by these national
+  identifiers (serving §4 rows 4, 5, 9, 10); the identifiers are carried as keys, never parsed
+  back from IDs (AGENTS rule 6).
+- **Constants:** `czptt.keys.sr70_country = "CZ"`, `czptt.keys.sr70_code_length = 5`.
+- **Diagnostic:** none (a train number taken from the TR core is diagnosed by R057).
+
+#### Dropped by the rewrite
+- **CZPTT-R048** (edge timing copied across a shared point): dropped: unreachable since parts are
+  cut from passenger calls. Adjacent parts share one boundary call, so one side cannot be timed
+  while the other is not.
+- **CZPTT-R047**, its "dropped below two passenger calls" branch: dropped for the same reason (a
+  part cut from passenger calls has at least two). R047 stands as "a replacement-bus part holds
+  passenger calls only".

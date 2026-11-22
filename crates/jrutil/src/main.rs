@@ -7,9 +7,14 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 
 mod commands {
+    pub mod build;
     pub mod compare;
     pub mod validate;
 }
+mod companion;
+mod load;
+mod pipeline;
+mod spec;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -24,6 +29,12 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Compile the packages a build specification names.
+    Build {
+        /// The build specification (TOML).
+        #[arg(long)]
+        spec: PathBuf,
+    },
     /// Check a production package against the serving and production contracts.
     Validate {
         /// The package directory (manifest.json, gtfs.zip, serving/, diagnostics.json).
@@ -50,6 +61,7 @@ enum Command {
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
+        Command::Build { spec } => commands::build::run(&spec),
         Command::Validate { package } => commands::validate::run(&package),
         Command::Compare {
             reference,

@@ -1,4 +1,4 @@
-//! Cutting an accepted path into trip parts (R041–R047, R051), timing their edges (R048–R050)
+//! Cutting an accepted path into trip parts (R041–R047, R051), timing their edges (R049, R050)
 //! and giving them their railway points (R117).
 
 mod edges;
@@ -9,7 +9,7 @@ use jr_model::{Diagnostic, Diagnostics, Rule, Severity};
 use crate::path::{Call, Part, Rejection, RejectionReason, SegmentKey};
 use crate::policy::Policy;
 
-pub(crate) use edges::{R048, R049, R050};
+pub(crate) use edges::{R049, R050};
 pub(crate) use railway::R117;
 
 /// Parts are cut from the calls a passenger can use (Q15: there is no operational-point mode;
@@ -51,11 +51,11 @@ pub(crate) const R046: Rule = Rule {
     summary: "The mode block counts switches between rail and replacement bus",
 };
 
-/// A replacement bus runs between public stops; one that serves fewer than two is not a trip.
-/// Its number stays unused so the other parts keep theirs.
+/// A replacement bus runs between public stops, not along the railway: its part holds
+/// passenger calls only (it is cut from them, and R117 adds no railway points to it).
 pub(crate) const R047: Rule = Rule {
     id: "CZPTT-R047",
-    summary: "A replacement-bus part keeps its passenger calls and is dropped below two",
+    summary: "A replacement-bus part holds passenger calls only",
 };
 
 /// An operator change written at a non-passenger point becomes visible only at the next
@@ -141,31 +141,14 @@ pub(crate) fn segment(
     let mut previous_mode = None;
     for (number, (first, last, key)) in segments.into_iter().enumerate() {
         let (line, responsible_ru, rail_route_type, category, replacement_bus) = key;
-        // Counted over every segment, dropped ones included, so blocks do not move.
         if previous_mode.is_some_and(|previous| previous != replacement_bus) {
             mode_block += 1;
         }
         previous_mode = Some(replacement_bus);
         let number = number as u16 + 1;
-        let mut part_calls = selected[first..=last].to_vec();
-        if replacement_bus {
-            part_calls.retain(|call| call.passenger);
-            if part_calls.len() < minimum {
-                diagnostics.push(
-                    Diagnostic::new(
-                        "czptt_replacement_bus_part_dropped",
-                        Severity::Warning,
-                        pa,
-                        format!(
-                            "part {number}: {} passenger calls, fewer than {minimum}",
-                            part_calls.len()
-                        ),
-                    )
-                    .rule(R047),
-                );
-                continue;
-            }
-        }
+        // R047: cut from passenger calls, so a replacement-bus part holds nothing else;
+        // R117 gives it no railway points.
+        let part_calls = selected[first..=last].to_vec();
         parts.push(Part {
             number,
             key: SegmentKey {
