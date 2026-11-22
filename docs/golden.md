@@ -21,6 +21,18 @@ The F# reference package is produced once with `czptt-to-bundle` on that `messag
 as `<root>/czptt/fs/package`. The Rust compiler reads `<root>/czptt/subset` directly: ordering
 the messages is part of the compiler, so the comparison also covers it.
 
+### Reference and result (2026-11-22)
+
+F# JrUtil `aa2f1db`, `czptt-to-bundle --operational-points=sidecar`, no route shapes (there is no
+osr graph on the development machine): 16 s, about 1.0 GB peak, 4,054 trips and 59,365 calls.
+`jrutil build` on the same subset: 0.9 s, 152 MB peak. `jrutil compare … --expect
+parity/czptt.toml` passes: eight explained categories; trips, calls, times, route stops, zones,
+notes and the GTFS stop_times, trips, routes and transfers are identical.
+
+Not covered by the subset, to be looked at in the full build made with the maintainer: paths
+with a negative day offset (CZPTT-R066), explicit note occurrences (CZPTT-R071), and the
+route-shapes phase.
+
 ## Road (JDF, posts, overlay)
 
 Prepared when the road port starts (M2), from JrUtil's `scripts/golden/prepare.py` selection:

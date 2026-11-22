@@ -18,5 +18,11 @@ cargo test --workspace
 cargo run --release -p jrutil -- validate <package-dir>
 ```
 
-Status: under construction. The rail (CZPTT) package is ported first, then road (JDF, the post
-estimator and the regional overlay).
+Status: the rail (CZPTT) package is ported and matches the F# reference on the golden subset
+(`parity/czptt.toml`); it has not replaced F# in the nightly build yet. Road (JDF, the post
+estimator and the regional overlay) is in progress.
+
+```
+cargo run --release -p jrutil -- build --spec build.toml
+cargo run --release -p jrutil -- compare <reference-package> <candidate-package> --expect parity/czptt.toml
+```
