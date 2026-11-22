@@ -73,14 +73,18 @@ impl RoutingMode {
     }
 }
 
-/// A turn restriction resolved to a graph node (R018).
+/// A turn restriction resolved to a graph node (R018). The ways are indexes into the graph's
+/// ways, or [`NO_WAY`] for a way that gave no edge.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) struct Restriction {
     pub via: u32,
-    pub from_way: i64,
+    pub from_way: u32,
     pub only: bool,
-    pub to_way: i64,
+    pub to_way: u32,
 }
+
+/// A restriction's way that is not on the graph: no edge is of it.
+pub(super) const NO_WAY: u32 = u32::MAX;
 
 /// Counts of what the graph holds.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -115,9 +119,13 @@ pub struct RoutingGraph {
     pub(super) edge_from: Vec<u32>,
     pub(super) edge_to: Vec<u32>,
     pub(super) edge_length: Vec<f64>,
-    pub(super) edge_cost: Vec<f64>,
-    pub(super) edge_way: Vec<i64>,
+    /// The edge's way, as an index into `way_ids`.
+    pub(super) edge_way: Vec<u32>,
     pub(super) edge_flags: Vec<u8>,
+    /// The OSM ways that gave an edge, ascending.
+    pub(super) way_ids: Vec<i64>,
+    /// What an edge closed to buses costs per metre (R012).
+    pub(super) restricted_access_factor: f64,
     /// Incoming edges of node `n` are `in_edges[in_offsets[n]..in_offsets[n + 1]]`, ascending.
     pub(super) in_offsets: Vec<u32>,
     pub(super) in_edges: Vec<u32>,
@@ -167,7 +175,7 @@ impl RoutingGraph {
 
     /// The OSM way an edge belongs to.
     pub fn edge_way(&self, edge: u32) -> i64 {
-        self.edge_way[edge as usize]
+        self.way_ids[self.edge_way[edge as usize] as usize]
     }
 
     /// Length in metres on the ground.
@@ -177,7 +185,12 @@ impl RoutingGraph {
 
     /// Penalised cost in metres (R012).
     pub fn edge_cost(&self, edge: u32) -> f64 {
-        self.edge_cost[edge as usize]
+        let length = self.edge_length[edge as usize];
+        if self.edge_is_severe(edge) {
+            length * self.restricted_access_factor
+        } else {
+            length
+        }
     }
 
     /// Whether a mode may use the edge.
@@ -215,8 +228,8 @@ impl RoutingGraph {
         if self.restricted_via[via as usize / 64] & (1 << (via % 64)) == 0 {
             return true;
         }
-        let from_way = self.edge_way(incoming);
-        let to_way = self.edge_way(outgoing);
+        let from_way = self.edge_way[incoming as usize];
+        let to_way = self.edge_way[outgoing as usize];
         let first = self
             .restrictions
             .partition_point(|r| (r.via, r.from_way) < (via, from_way));

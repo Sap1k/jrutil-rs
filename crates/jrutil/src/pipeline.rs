@@ -595,7 +595,7 @@ fn estimate_posts(
         jr_posts::EstimateInput {
             timetable,
             facts,
-            graph: &graph,
+            graph,
             routing: &routing,
             policy: &policy,
             registry: &registry_posts,
@@ -609,7 +609,6 @@ fn estimate_posts(
         },
         diagnostics,
     )?;
-    drop(graph);
     pass(timetable, estimated.edits, precedence, diagnostics)?;
 
     let io = |path: &Path| {

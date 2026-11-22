@@ -91,8 +91,10 @@ line 444 gain authority because the base has no trip-less routes; replaced coord
 ### Estimated posts and the production shape: result (2026-11-22)
 
 `<root>/jdf/build-posts.toml` (the base with estimated posts) builds in 54 s: 12 s for the
-routing graph of the national demand extract, 28 s for the estimator; about 3.6 GB while the
-graph lives. `<root>/jdf/build-full.toml` (posts, then the overlay, then the filtered feed: what
+routing graph of the national demand extract, 28 s for the estimator. The graph (16.6 M
+vertices, 32.9 M edges) holds about 1.5 GB and is freed when the last context is routed: the
+build peaks at 2.6 GB while the graph is built, stays at 2.0 GB while routing and at 1.4 GB
+after it. `<root>/jdf/build-full.toml` (posts, then the overlay, then the filtered feed: what
 production publishes) builds in 68 s. F#: 85 s `fix-jdf`, 34 s `merge-jdf`, 206 s `jdf-to-bundle`
 with posts, 234 s overlay.
 

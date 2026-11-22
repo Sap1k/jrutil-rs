@@ -55,27 +55,43 @@ fn key(x: i32, y: i32) -> u64 {
     (u64::from(x as u32) << 32) | u64::from(y as u32)
 }
 
+/// A cell and an edge whose box touches it; ordered as (`key`, edge).
+type Entry = [u32; 3];
+
 impl SnapIndex {
     pub fn new(node_xy: &[Laea], edge_from: &[u32], edge_to: &[u32]) -> SnapIndex {
-        let mut entries: Vec<(u64, u32)> = (0..edge_from.len())
+        let cells = |edge: usize| {
+            let a = node_xy[edge_from[edge] as usize];
+            let b = node_xy[edge_to[edge] as usize];
+            let xs = cell(a.easting.min(b.easting))..=cell(a.easting.max(b.easting));
+            let ys = cell(a.northing.min(b.northing))..=cell(a.northing.max(b.northing));
+            (xs, ys)
+        };
+        // Counted first, so the entries are allocated once: they are the build's largest
+        // transient.
+        let total: usize = (0..edge_from.len())
             .into_par_iter()
-            .flat_map_iter(|edge| {
-                let a = node_xy[edge_from[edge] as usize];
-                let b = node_xy[edge_to[edge] as usize];
-                let (x0, x1) = (
-                    cell(a.easting.min(b.easting)),
-                    cell(a.easting.max(b.easting)),
-                );
-                let (y0, y1) = (
-                    cell(a.northing.min(b.northing)),
-                    cell(a.northing.max(b.northing)),
-                );
-                (x0..=x1).flat_map(move |x| (y0..=y1).map(move |y| (key(x, y), edge as u32)))
+            .map(|edge| {
+                let (xs, ys) = cells(edge);
+                xs.count() * ys.count()
             })
-            .collect();
+            .sum();
+        let mut entries: Vec<Entry> = Vec::with_capacity(total);
+        for edge in 0..edge_from.len() {
+            let (xs, ys) = cells(edge);
+            for x in xs {
+                for y in ys.clone() {
+                    entries.push([x as u32, y as u32, edge as u32]);
+                }
+            }
+        }
         entries.par_sort_unstable();
-        let mut index = SnapIndex::default();
-        for (cell_key, edge) in entries {
+        let mut index = SnapIndex {
+            edges: Vec::with_capacity(total),
+            ..SnapIndex::default()
+        };
+        for [x, y, edge] in entries {
+            let cell_key = key(x as i32, y as i32);
             if index.keys.last() != Some(&cell_key) {
                 index.keys.push(cell_key);
                 index.offsets.push(index.edges.len() as u32);

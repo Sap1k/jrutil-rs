@@ -20,7 +20,8 @@ pub struct EstimateInput<'a> {
     /// The road timetable as assembled.
     pub timetable: &'a Timetable,
     pub facts: &'a PostFacts,
-    pub graph: &'a RoutingGraph,
+    /// Only the capture routes; it frees the graph when it has.
+    pub graph: RoutingGraph,
     pub routing: &'a RoutingPolicy,
     pub policy: &'a EvaluationPolicy,
     /// The registry's pinned posts (`posts.csv`).
@@ -90,7 +91,7 @@ pub fn estimate(
     input: EstimateInput<'_>,
     diagnostics: &mut Diagnostics,
 ) -> Result<Estimated, EstimateError> {
-    let captured = capture::capture(&CaptureInput {
+    let captured = capture::capture(CaptureInput {
         timetable: input.timetable,
         facts: input.facts,
         graph: input.graph,

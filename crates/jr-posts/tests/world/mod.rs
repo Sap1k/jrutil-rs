@@ -68,7 +68,6 @@ pub fn osm(node: u64, north: f64, east: f64) -> PostCandidate {
 pub struct World {
     pub timetable: Timetable,
     pub facts: PostFacts,
-    pub graph: RoutingGraph,
     pub places: HashMap<u64, PlaceId>,
     pub unspecified: HashMap<u64, BoardingPointId>,
     route: RouteId,
@@ -108,7 +107,6 @@ impl World {
         World {
             timetable,
             facts: PostFacts::default(),
-            graph: street(),
             places: HashMap::new(),
             unspecified: HashMap::new(),
             route,
@@ -239,7 +237,7 @@ impl World {
             EstimateInput {
                 timetable: &self.timetable,
                 facts: &self.facts,
-                graph: &self.graph,
+                graph: street(),
                 routing: &RoutingPolicy::builtin(),
                 policy,
                 registry,

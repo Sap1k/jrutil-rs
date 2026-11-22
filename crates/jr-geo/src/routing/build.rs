@@ -5,7 +5,7 @@ use rayon::prelude::*;
 
 use crate::laea;
 
-use super::graph::{GraphCounts, ROAD, Restriction, RoutingGraph, SERVICE, SEVERE, TRAM};
+use super::graph::{GraphCounts, NO_WAY, ROAD, Restriction, RoutingGraph, SERVICE, SEVERE, TRAM};
 use super::input::{
     OsmMemberType, OsmNode, OsmRelation, OsmTags, OsmWay, normalized, tag, tag_in, tag_is,
 };
@@ -78,12 +78,12 @@ pub enum GraphError {
     TooLarge,
 }
 
+/// An edge between extract nodes; `way` indexes the builder's ways.
 #[derive(Clone, Copy, Debug)]
 struct RawEdge {
     from: u32,
     to: u32,
-    way: i64,
-    flags: u8,
+    way: u32,
 }
 
 /// Builds a [`RoutingGraph`] from a type-ordered stream: nodes, then ways, then relations
@@ -97,6 +97,9 @@ pub struct GraphBuilder<'p> {
     ascending: bool,
     frozen: bool,
     edges: Vec<RawEdge>,
+    /// The ways that gave an edge, in source order, and their flags.
+    way_ids: Vec<i64>,
+    way_flags: Vec<u8>,
     /// (from way, to way, via raw node, only).
     restrictions: Vec<(i64, i64, u32, bool)>,
     counts: GraphCounts,
@@ -112,6 +115,8 @@ impl<'p> GraphBuilder<'p> {
             ascending: true,
             frozen: false,
             edges: Vec::new(),
+            way_ids: Vec::new(),
+            way_flags: Vec::new(),
             restrictions: Vec::new(),
             counts: GraphCounts::default(),
         }
@@ -229,6 +234,7 @@ impl<'p> GraphBuilder<'p> {
         }
         let (forward, backward) = self.directions(way.tags);
         let before = self.edges.len();
+        let index = self.way_ids.len() as u32;
         let mut left = way.nodes.first().and_then(|&id| self.raw_node(id));
         for &next in way.nodes.iter().skip(1) {
             let right = self.raw_node(next);
@@ -240,8 +246,7 @@ impl<'p> GraphBuilder<'p> {
                 let edge = |from, to| RawEdge {
                     from,
                     to,
-                    way: way.id,
-                    flags,
+                    way: index,
                 };
                 if forward {
                     self.edges.push(edge(l, r));
@@ -253,6 +258,11 @@ impl<'p> GraphBuilder<'p> {
             left = right;
         }
         if self.edges.len() > before {
+            if index == NO_WAY {
+                return Err(GraphError::TooLarge);
+            }
+            self.way_ids.push(way.id);
+            self.way_flags.push(flags);
             if flags & ROAD != 0 {
                 self.counts.road_ways += 1;
             }
@@ -344,12 +354,22 @@ impl<'p> GraphBuilder<'p> {
         let pick = |f: &dyn Fn(&RawEdge) -> u32| -> Vec<u32> {
             order.iter().map(|&i| f(&self.edges[i as usize])).collect()
         };
+        // The graph's ways: the distinct ways that gave an edge, ascending.
+        let mut way_ids = self.way_ids.clone();
+        way_ids.sort_unstable();
+        way_ids.dedup();
+        let way_of = |id: i64| way_ids.binary_search(&id).ok().map(|way| way as u32);
+        let way_rank: Vec<u32> = self
+            .way_ids
+            .iter()
+            .map(|&id| way_of(id).expect("a way that gave an edge"))
+            .collect();
         let edge_from = pick(&|e| compact[e.from as usize]);
         let edge_to = pick(&|e| compact[e.to as usize]);
-        let edge_way: Vec<i64> = order.iter().map(|&i| self.edges[i as usize].way).collect();
+        let edge_way = pick(&|e| way_rank[e.way as usize]);
         let edge_flags: Vec<u8> = order
             .iter()
-            .map(|&i| self.edges[i as usize].flags)
+            .map(|&i| self.way_flags[self.edges[i as usize].way as usize])
             .collect();
         drop(order);
         drop(std::mem::take(&mut self.edges));
@@ -363,18 +383,6 @@ impl<'p> GraphBuilder<'p> {
                 (b.easting - a.easting).hypot(b.northing - a.northing)
             })
             .collect();
-        let edge_cost: Vec<f64> = edge_length
-            .iter()
-            .zip(&edge_flags)
-            .map(|(&length, &flags)| {
-                if flags & SEVERE != 0 {
-                    length * restricted_access_factor
-                } else {
-                    length
-                }
-            })
-            .collect();
-
         // Incoming edges, ascending per node.
         let mut cursor = in_offsets.clone();
         let mut in_edges = vec![0u32; edge_count];
@@ -390,9 +398,9 @@ impl<'p> GraphBuilder<'p> {
                 u32::MAX => self.counts.restrictions_off_graph += 1,
                 via => restrictions.push(Restriction {
                     via,
-                    from_way,
+                    from_way: way_of(from_way).unwrap_or(NO_WAY),
                     only,
-                    to_way,
+                    to_way: way_of(to_way).unwrap_or(NO_WAY),
                 }),
             }
         }
@@ -402,6 +410,10 @@ impl<'p> GraphBuilder<'p> {
             restricted_via[r.via as usize / 64] |= 1 << (r.via % 64);
         }
 
+        // What the builder held of the extract goes before the snap index is built.
+        drop(compact);
+        drop(std::mem::take(&mut self.ids));
+        drop(std::mem::take(&mut self.blocked));
         let snaps = SnapIndex::new(&node_xy, &edge_from, &edge_to);
         let mut counts = self.counts;
         counts.nodes = node_count;
@@ -418,9 +430,10 @@ impl<'p> GraphBuilder<'p> {
             edge_from,
             edge_to,
             edge_length,
-            edge_cost,
             edge_way,
             edge_flags,
+            way_ids,
+            restricted_access_factor,
             in_offsets,
             in_edges,
             restrictions,

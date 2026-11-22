@@ -199,7 +199,8 @@ pub const RULES: &[Rule] = &[
 pub struct CaptureInput<'a> {
     pub timetable: &'a Timetable,
     pub facts: &'a PostFacts,
-    pub graph: &'a RoutingGraph,
+    /// Freed when the contexts are routed, before the pack is put together.
+    pub graph: RoutingGraph,
     pub routing: &'a RoutingPolicy,
     pub constants: &'a Constants,
     pub identity: PackIdentity,
@@ -278,7 +279,7 @@ fn coordinate_key(coords: &[Coord]) -> String {
 }
 
 /// R030–R057: the evidence pack of the timetable.
-pub fn capture(input: &CaptureInput<'_>) -> Capture {
+pub fn capture(input: CaptureInput<'_>) -> Capture {
     let constants = input.constants;
     let admitted = observations::admit(input.facts, constants);
     let index = FactIndex::new(input.facts);
@@ -406,6 +407,7 @@ pub fn capture(input: &CaptureInput<'_>) -> Capture {
             )
         })
         .collect();
+    drop(input.graph);
 
     let mut contexts = Contexts::default();
     let mut variants = CorridorVariants::default();
@@ -452,7 +454,7 @@ pub fn capture(input: &CaptureInput<'_>) -> Capture {
         );
     }
     let pack = Pack {
-        identity: input.identity.clone(),
+        identity: input.identity,
         observations: admitted.observations,
         route_points: admitted.route_points,
         contexts,
