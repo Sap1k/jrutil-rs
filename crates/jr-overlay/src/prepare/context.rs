@@ -8,8 +8,9 @@ use rayon::prelude::*;
 
 use super::base::{BaseView, point_set_distance};
 use super::names::Names;
-use super::signature::{self, Rank, Times};
+use super::signature::Times;
 use super::source::{ContextInference, MatchMethod, PlaceRef, PreparedSource, StopMatch};
+use crate::matching::score::{self, Rank};
 
 /// Repeated until a pass accepts nothing: an eligible trip running in the horizon whose calls
 /// leave between one and the profile's maximum of stop groups unplaced, each called once, with at
@@ -259,7 +260,7 @@ fn collect(
                         arrivals: &candidate.arrivals,
                         departures: &candidate.departures,
                     };
-                    let rank = signature::rank(0, source_times, target_times, &alignment);
+                    let rank = score::rank(0, source_times, target_times, &alignment);
                     match best {
                         Some(current) if rank > current => {}
                         Some(current) if rank == current => best_patterns.push(pattern),

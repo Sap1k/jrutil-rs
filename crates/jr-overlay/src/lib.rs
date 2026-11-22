@@ -20,6 +20,8 @@
 //!
 //! See ARCHITECTURE.md.
 
+pub mod authority;
+pub mod matching;
 pub mod prepare;
 pub mod profile;
 pub mod report;
@@ -73,7 +75,11 @@ pub enum OverlayError {
 
 /// Every rule the engine implements, stage by stage.
 pub fn rules() -> impl Iterator<Item = jr_model::Rule> {
-    [prepare::RULES].into_iter().flatten().copied()
+    [prepare::RULES, authority::RULES]
+        .into_iter()
+        .chain(matching::RULES.iter().copied())
+        .flatten()
+        .copied()
 }
 
 pub fn overlay(
@@ -82,9 +88,13 @@ pub fn overlay(
 ) -> Result<Overlaid, OverlayError> {
     let base = input.base;
     let prepared = prepare::prepare(input, diagnostics)?;
-    // Authority, matching and projection are not built yet: nothing is changed.
+    let authority = authority::authority(&prepared, diagnostics);
+    let matches = matching::match_trips(&prepared, &authority, diagnostics);
+    // Projection is not built yet: nothing is changed.
+    let mut reports = prepared.reports();
+    reports.extend(matches.reports(&prepared, &authority));
     Ok(Overlaid {
         edits: EditBuilder::new(base, PASS).finish(),
-        reports: prepared.reports(),
+        reports,
     })
 }

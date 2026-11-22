@@ -1,6 +1,5 @@
-//! Signatures of call patterns (OVL-R055) and the time features trips are ranked by (the
-//! features of R069 and the rank of R070, which trip matching declares; context inference, R044,
-//! ranks by them too).
+//! Signatures of call patterns (OVL-R055). The time features and rank trips are compared by
+//! are trip matching's (R069, R070, `crate::matching::score`).
 
 use jr_model::Rule;
 
@@ -17,7 +16,7 @@ pub const RULES: &[Rule] = &[OVL_R055];
 
 /// A time present for scoring and signatures: GTFS times are never negative, so a negative one
 /// (a folded arrival before midnight, R056) counts as absent, as in the reference.
-fn present(time: Option<i32>) -> Option<i32> {
+pub(crate) fn present(time: Option<i32>) -> Option<i32> {
     time.filter(|&time| time >= 0)
 }
 
@@ -58,77 +57,5 @@ impl Times<'_> {
         self.first_equal(other, resolution)
             && rounded(self.arrivals.last().copied().flatten(), resolution)
                 == rounded(other.arrivals.last().copied().flatten(), resolution)
-    }
-}
-
-/// The time features of a candidate (R069) and its rank (R070): lower is better.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Rank {
-    pub edits: u32,
-    pub first_departure_delta: i64,
-    pub aggregate_delta: i64,
-    pub duration_delta: i64,
-    pub maximum_delta: i64,
-    pub squared_delta: i64,
-    /// The negated count of aligned target calls.
-    pub negative_aligned: i64,
-}
-
-/// What a missing delta counts as.
-pub const MISSING_DELTA: i64 = (i32::MAX / 4) as i64;
-/// What a missing sum counts as.
-pub const MISSING_SUM: i64 = i64::MAX / 4;
-
-/// R069: the features of aligning `source` to `target`, `alignment[target call]` being the
-/// source call it aligns to.
-pub fn rank(edits: u32, source: Times<'_>, target: Times<'_>, alignment: &[Option<usize>]) -> Rank {
-    let first = |times: &[Option<i32>]| times.iter().copied().find_map(present);
-    let last = |times: &[Option<i32>]| times.iter().rev().copied().find_map(present);
-    let (first_source, first_target) = (first(source.departures), first(target.departures));
-    let (last_source, last_target) = (last(source.arrivals), last(target.arrivals));
-    let first_departure_delta = match (first_source, first_target) {
-        (Some(s), Some(t)) => i64::from((s - t).abs()),
-        _ => MISSING_DELTA,
-    };
-    let duration_delta = match (first_source, first_target, last_source, last_target) {
-        (Some(fs), Some(ft), Some(ls), Some(lt)) => i64::from(((ls - fs) - (lt - ft)).abs()),
-        _ => MISSING_DELTA,
-    };
-    let (mut aggregate, mut maximum, mut squared, mut comparable) = (0i64, 0i64, 0i64, 0);
-    for (target_index, aligned) in alignment.iter().enumerate() {
-        let Some(source_index) = *aligned else {
-            continue;
-        };
-        if source_index >= source.arrivals.len() || target_index >= target.arrivals.len() {
-            continue;
-        }
-        for (s, t) in [
-            (source.arrivals[source_index], target.arrivals[target_index]),
-            (
-                source.departures[source_index],
-                target.departures[target_index],
-            ),
-        ] {
-            if let (Some(s), Some(t)) = (present(s), present(t)) {
-                let delta = i64::from((s - t).abs());
-                aggregate += delta;
-                maximum = maximum.max(delta);
-                squared += delta * delta;
-                comparable += 1;
-            }
-        }
-    }
-    if comparable == 0 {
-        aggregate = MISSING_SUM;
-        squared = MISSING_SUM;
-    }
-    Rank {
-        edits,
-        first_departure_delta,
-        aggregate_delta: aggregate,
-        duration_delta,
-        maximum_delta: maximum,
-        squared_delta: squared,
-        negative_aligned: -(alignment.iter().filter(|a| a.is_some()).count() as i64),
     }
 }

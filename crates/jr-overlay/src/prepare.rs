@@ -32,7 +32,8 @@ pub use calendar::DAY;
 pub use hooks::CrosswalkRow;
 pub use names::Names;
 pub use routes::labels_compatible;
-pub use signature::{MISSING_DELTA, MISSING_SUM, Rank, Times, rank, rounded};
+pub(crate) use signature::present as signature_present;
+pub use signature::{Times, rounded};
 pub use source::{
     ContextInference, MatchMethod, NativePlace, PlaceRef, PreparedSource, SourceCall, SourceRoute,
     SourceTrip, StopGroup, StopMatch,

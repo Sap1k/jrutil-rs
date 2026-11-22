@@ -306,3 +306,76 @@ pub fn group_row(prepared: &Prepared<'_>, group: &str) -> (String, String, Strin
         .unwrap_or_else(|| panic!("no group {group} in {:#?}", report.rows));
     (row[3].clone(), row[6].clone(), row[7].clone())
 }
+
+/// Four stops 1 km apart, as base places 1–4 and as source stops `a`–`d` of the same names.
+pub const FOUR: [(&str, &str, f64); 4] = [
+    ("a", "Alfa", 50.0),
+    ("b", "Beta", 50.01),
+    ("c", "Gama", 50.02),
+    ("d", "Delta", 50.03),
+];
+
+/// The base places of [`FOUR`].
+pub fn four_places(base: &mut Base) -> Vec<PlaceId> {
+    FOUR.iter()
+        .enumerate()
+        .map(|(index, (_, name, lat))| base.place(index as u64 + 1, name, Some((*lat, 14.0))))
+        .collect()
+}
+
+/// A source feed over [`FOUR`]: routes `(route_id, short name, route_type)`, trips
+/// `(route_id, trip_id, sub_agency_id)` running every day, calls `(trip_id, stop, "HH:MM")` in
+/// order.
+pub fn trip_feed(
+    profile: &SourceProfile,
+    routes: &[(&str, &str, u32)],
+    trips: &[(&str, &str, &str)],
+    calls: &[(&str, &str, &str)],
+    companion: &str,
+) -> Feed {
+    let mut stops = String::from("stop_id,stop_name,stop_lat,stop_lon\n");
+    for (id, name, lat) in FOUR {
+        stops.push_str(&format!("{id},{name},{lat},14.0\n"));
+    }
+    let mut route_rows = String::from("route_id,agency_id,route_short_name,route_type\n");
+    for (id, number, kind) in routes {
+        route_rows.push_str(&format!("{id},a,{number},{kind}\n"));
+    }
+    let mut trip_rows = String::from("route_id,service_id,trip_id,sub_agency_id\n");
+    for (route, trip, sub) in trips {
+        trip_rows.push_str(&format!("{route},s,{trip},{sub}\n"));
+    }
+    let mut call_rows = String::from("trip_id,arrival_time,departure_time,stop_id,stop_sequence\n");
+    for (index, (trip, stop, time)) in calls.iter().enumerate() {
+        call_rows.push_str(&format!(
+            "{trip},{time}:00,{time}:00,{stop},{}\n",
+            index + 1
+        ));
+    }
+    let companion = format!("route_id,sub_agency_id,route_licence_number\n{companion}");
+    feed(
+        profile,
+        &[
+            ("agency.txt", AGENCY),
+            ("routes.txt", &route_rows),
+            ("trips.txt", &trip_rows),
+            ("stops.txt", &stops),
+            ("stop_times.txt", &call_rows),
+            ("calendar.txt", CALENDAR),
+            ("route_sub_agencies.txt", &companion),
+        ],
+    )
+}
+
+/// The generic profile with the companion line claim hook.
+pub fn claiming_profile(extra: &str) -> SourceProfile {
+    generic_profile(&format!(
+        r#"
+[hooks.cis_line_claim]
+table = "route_sub_agencies.txt"
+source_keys = ["route_id", "sub_agency_id"]
+lookup_keys = ["route_id", "sub_agency_id"]
+value_column = "route_licence_number"
+{extra}"#
+    ))
+}
