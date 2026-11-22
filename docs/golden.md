@@ -88,6 +88,31 @@ line keeps the national trip (1,398 trips keep 3,006 trip-dates F# lost); 39 tri
 line 444 gain authority because the base has no trip-less routes; replaced coordinates say
 `overlay`; national keys hold for the line version's period on every slice.
 
+### Estimated posts and the production shape: result (2026-11-22)
+
+`<root>/jdf/build-posts.toml` (the base with estimated posts) builds in 54 s: 12 s for the
+routing graph of the national demand extract, 28 s for the estimator; about 3.6 GB while the
+graph lives. `<root>/jdf/build-full.toml` (posts, then the overlay, then the filtered feed: what
+production publishes) builds in 68 s. F#: 85 s `fix-jdf`, 34 s `merge-jdf`, 206 s `jdf-to-bundle`
+with posts, 234 s overlay.
+
+- `jrutil compare <root>/jdf/out/fs-ref/bundle-posts-reg <root>/jdf/out/rs-posts/package
+  --expect parity/jdf-posts.toml` passes.
+- `jrutil compare <root>/jdf/out/fs-ref/overlay-posts-reg <root>/jdf/out/rs-full/package
+  --expect parity/jdf-full.toml` passes.
+
+The evaluator decides exactly as F# on the pack F# captured (100,925 of 100,925 contexts). With
+the Rust capture and router, 96.4 % of calls board at the same point as with F#; the rest are
+decisions on a threshold that fall the other way, in both directions (the new router keeps
+`f64` where F# stored vertices as `f32`, and the anchor of a stop with two observed positions
+is the one nearer the stop, where F# let a hash decide). Judged by the regional feeds' real
+posts (`tools/golden/posts_accuracy.py`, 1,636,203 labelled calls):
+
+| | correct (≤ 20 m) | ambiguous | wrong (> 35 m) | no estimate |
+|---|---|---|---|---|
+| F# | 72.59 % | 4.19 % | 3.34 % | 19.88 % |
+| jrutil-rs | 72.43 % | 4.13 % | 3.15 % | 20.30 % |
+
 ### Overlay and post estimator references
 
 Both are F# runs on the registry-numbered chain, made once (2026-11-22):
