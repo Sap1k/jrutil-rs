@@ -261,6 +261,90 @@ pub mod czptt {
     }
 }
 
+/// The road feed's scheme (`docs/rules/jdf-convert.md`, section 4). Stop and post numbers come
+/// from the stop registry; text components are escaped.
+pub mod jdf {
+    use super::PublicId;
+    use crate::time::Date;
+
+    /// `number` is the registered stop number, or a provisional one.
+    pub fn stop(number: u64) -> PublicId {
+        PublicId::build("jdf:stop", &[&number.to_string()])
+    }
+
+    /// The boarding point of calls for which the source names no post.
+    pub fn unspecified_point(stop: &PublicId) -> PublicId {
+        stop.child(&["unspecified"])
+    }
+
+    /// A post the source lists with its own number (`Oznacniky`).
+    pub fn authored_post(stop: &PublicId, post: u64) -> PublicId {
+        stop.child(&["post", "id", &post.to_string()])
+    }
+
+    /// A post a call names only by a text designation.
+    pub fn textual_post(stop: &PublicId, designation: &str) -> PublicId {
+        stop.child(&["post", designation])
+    }
+
+    /// A post the estimator inferred; `ordinal` is pinned by the registry.
+    pub fn estimated_post(stop: &PublicId, ordinal: u32) -> PublicId {
+        stop.child(&["est", &ordinal.to_string()])
+    }
+
+    /// `distinction` tells apart operators' records that share a registration number.
+    pub fn agency(registration: &str, distinction: u32) -> PublicId {
+        PublicId::build("jdf:agency", &[registration, &distinction.to_string()])
+    }
+
+    /// One published route of a line: the regular one, its detour timetables, and (rarely) a
+    /// further group whose presentation differs, told apart by `semantics`, eight hex
+    /// characters derived from what differs.
+    pub fn route(line: &str, detour: bool, semantics: Option<&str>) -> PublicId {
+        let mut parts = vec![line];
+        if detour {
+            parts.push("detour");
+        }
+        parts.extend(semantics);
+        PublicId::build("jdf:route", &parts)
+    }
+
+    /// A trip of a published line version: the line, the day the version's validity starts,
+    /// whether it is a detour timetable, and the trip number. `hash` tells apart a second
+    /// version starting the same day; `part` (from 2) versions published side by side.
+    pub fn trip(
+        line: &str,
+        version_start: Date,
+        detour: bool,
+        hash: Option<&str>,
+        part: Option<u32>,
+        trip_number: u64,
+    ) -> PublicId {
+        let start = format!(
+            "{:02}{:02}{:02}",
+            version_start.year().rem_euclid(100),
+            version_start.month(),
+            version_start.day()
+        );
+        let part = part.map(|part| format!("p{part}"));
+        let number = trip_number.to_string();
+        let mut parts = vec![line, start.as_str()];
+        if detour {
+            parts.push("det");
+        }
+        parts.extend(hash);
+        parts.extend(part.as_deref());
+        parts.push(&number);
+        PublicId::build("jdf:trip", &parts)
+    }
+
+    /// A note of a route (`Udaje`), a trip (`Caskody`) or a reservation rule (`Mistenky`), named
+    /// after what it belongs to and the source row's own number.
+    pub fn note(owner: &PublicId, kind: &str, number: u64) -> PublicId {
+        owner.child(&["notice", kind, &number.to_string()])
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -321,6 +405,50 @@ mod tests {
         assert_eq!(
             route_stop(&route, None, &station, 1).as_str(),
             "czptt:route:line:5007:3736:106/-/czptt:stop:CZ:54212/1"
+        );
+    }
+
+    #[test]
+    fn the_road_scheme_matches_the_published_ids() {
+        use jiff::civil::date;
+        let stop = jdf::stop(4711);
+        assert_eq!(
+            jdf::unspecified_point(&stop).as_str(),
+            "jdf:stop:4711:unspecified"
+        );
+        assert_eq!(
+            jdf::authored_post(&stop, 3).as_str(),
+            "jdf:stop:4711:post:id:3"
+        );
+        assert_eq!(
+            jdf::textual_post(&stop, "A 1").as_str(),
+            "jdf:stop:4711:post:A%201"
+        );
+        assert_eq!(
+            jdf::estimated_post(&stop, 2).as_str(),
+            "jdf:stop:4711:est:2"
+        );
+        assert_eq!(jdf::agency("00005886", 1).as_str(), "jdf:agency:00005886:1");
+        assert_eq!(
+            jdf::route("199007", true, None).as_str(),
+            "jdf:route:199007:detour"
+        );
+        assert_eq!(
+            jdf::route("199007", false, Some("0a1b2c3d")).as_str(),
+            "jdf:route:199007:0a1b2c3d"
+        );
+        let start = date(2026, 11, 13);
+        assert_eq!(
+            jdf::trip("199004", start, false, None, None, 3042).as_str(),
+            "jdf:trip:199004:261113:3042"
+        );
+        assert_eq!(
+            jdf::trip("199007", start, true, None, None, 2010).as_str(),
+            "jdf:trip:199007:261113:det:2010"
+        );
+        assert_eq!(
+            jdf::trip("199007", start, false, Some("0a1b2c3d"), Some(2), 7).as_str(),
+            "jdf:trip:199007:261113:0a1b2c3d:p2:7"
         );
     }
 }
