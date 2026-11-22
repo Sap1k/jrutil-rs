@@ -15,7 +15,7 @@
 //! cache = "cache/route-shapes"          # optional
 //!
 //! [jdf]
-//! batches = "sources/jdf/batches"       # one ZIP per batch
+//! batches = "sources/jdf/batches"       # one ZIP per batch; or the national exports below
 //! catalogues = "geodata/other"          # stop catalogues, every *.csv below it
 //! gazetteer = "geodata/gazetteer"       # cz_regions.json.gz, cz_towns.json.gz, eur_towns_countries.csv
 //! osm = "osm/jdf-post-candidates.osm.pbf"
@@ -25,6 +25,14 @@
 //! reference_date = "2026-11-21"
 //! output = "out/jdf"
 //! registry_candidates = "out/stop-candidates.csv"   # optional
+//!
+//! [[jdf.exports]]                       # a national export: a ZIP of batch ZIPs
+//! name = "vld"                          # its batches are named vld-<member>
+//! archive = "sources/JDF_VLD.zip"
+//!
+//! [jdf.shapes]                          # optional: generate route shapes, as for rail
+//! companion = "bin/obehy-motis-shapes"
+//! graph = "cache/osr-graph"
 //!
 //! [jdf.posts]                           # optional: estimate boarding posts
 //! routing = "osm/jdf-transit-routing-demand.osm.pbf"
@@ -66,7 +74,10 @@ pub struct BuildSpec {
 #[serde(deny_unknown_fields)]
 pub struct JdfSpec {
     /// A directory of JDF batches, one ZIP each. A batch is named after its file.
-    pub batches: PathBuf,
+    pub batches: Option<PathBuf>,
+    /// National exports, each a ZIP of batch ZIPs.
+    #[serde(default)]
+    pub exports: Vec<ExportSpec>,
     /// The stop catalogues: a CSV file, or a directory whose `*.csv` files are all read.
     pub catalogues: PathBuf,
     /// The directory of the okres, municipality and European town gazetteers.
@@ -90,6 +101,16 @@ pub struct JdfSpec {
     pub overlay: Option<OverlaySpec>,
     /// Boarding-post estimation; none without it.
     pub posts: Option<PostsSpec>,
+    /// Route shapes from the map-matching companion; none are generated without it.
+    pub shapes: Option<ShapesSpec>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExportSpec {
+    /// The prefix of the export's batch names.
+    pub name: String,
+    pub archive: PathBuf,
 }
 
 #[derive(Debug, Deserialize)]
@@ -170,6 +191,21 @@ pub struct ShapesSpec {
     pub cache: Option<PathBuf>,
 }
 
+impl ShapesSpec {
+    fn resolve(&mut self, base: &Path) {
+        for target in [
+            Some(&mut self.companion),
+            Some(&mut self.graph),
+            self.cache.as_mut(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            *target = base.join(&*target);
+        }
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum SpecError {
     #[error("cannot read {path}: {source}")]
@@ -200,21 +236,12 @@ impl BuildSpec {
                 *target = base.join(&*target);
             }
             if let Some(shapes) = &mut czptt.shapes {
-                for target in [
-                    Some(&mut shapes.companion),
-                    Some(&mut shapes.graph),
-                    shapes.cache.as_mut(),
-                ]
-                .into_iter()
-                .flatten()
-                {
-                    *target = base.join(&*target);
-                }
+                shapes.resolve(base);
             }
         }
         if let Some(jdf) = &mut spec.jdf {
             for target in [
-                Some(&mut jdf.batches),
+                jdf.batches.as_mut(),
                 Some(&mut jdf.catalogues),
                 Some(&mut jdf.gazetteer),
                 Some(&mut jdf.osm),
@@ -227,6 +254,12 @@ impl BuildSpec {
             .flatten()
             {
                 *target = base.join(&*target);
+            }
+            for export in &mut jdf.exports {
+                export.archive = base.join(&export.archive);
+            }
+            if let Some(shapes) = &mut jdf.shapes {
+                shapes.resolve(base);
             }
             if let Some(posts) = &mut jdf.posts {
                 posts.routing = base.join(&posts.routing);

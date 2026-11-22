@@ -380,3 +380,33 @@ fn jdf_r021_r023_short_records_and_bad_values() {
         [(1, Some("arrival"), "not a time (HHMM, | or <): \"2460\"")]
     );
 }
+
+/// A national export is a ZIP of batch ZIPs: its batches are the `.zip` members, in path
+/// order, wherever they sit; reading one gives the batch.
+#[test]
+fn export_lists_and_reads_its_batches() {
+    use std::io::Write as _;
+    let batch: &[u8] = include_bytes!("data/jdf/v1_11.zip");
+    let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+    let stored = zip::write::SimpleFileOptions::default();
+    for (name, bytes) in [
+        (r"JDF\20.ZIP", batch),
+        ("JDF/3.zip", batch),
+        ("readme.txt", b"not a batch".as_slice()),
+        ("zip", b"neither".as_slice()),
+    ] {
+        writer.start_file(name, stored).expect("member");
+        writer.write_all(bytes).expect("write");
+    }
+    let bytes = writer.finish().expect("zip").into_inner();
+
+    let export = jr_formats::jdf::Export::open(bytes.into()).expect("export");
+    let members = export.batches().expect("members");
+    let listed: Vec<(&str, &str)> = members
+        .iter()
+        .map(|member| (member.path.as_str(), member.stem()))
+        .collect();
+    assert_eq!(listed, [("JDF/20.ZIP", "20"), ("JDF/3.zip", "3")]);
+    let read = read_zip(Cursor::new(export.read(&members[1]).expect("member"))).expect("batch");
+    assert_eq!(read, v1_11());
+}

@@ -32,14 +32,13 @@ czptt:  compile → coordinates → replacement-bus connections → route-stop o
 jdf:    read batches → stop matching ┐ (per batch, in parallel)
                         merge ◄──────┘ (in batch-name order; calls only for versions that win)
         → international filter → assemble → [post estimator] → presentation
-        → [regional overlay → presentation] → route-stop order → publish
-        (+ the filtered feed, from the timetable as it stands before the overlay)
+        → [regional overlay → presentation] → route-stop order → [shapes] → publish
+        (+ the filtered feed, from the timetable as it stands before the overlay and the shapes)
 ```
 
 Stages in brackets run when the build specification asks for them. Planned and not built: rail
 platforms, connections from the infrastructure manager's list, a foreign rail overlay
-(`[rail platforms]`, `[connections]`, `[foreign overlay]` after the rail coordinates), and
-shapes for road.
+(`[rail platforms]`, `[connections]`, `[foreign overlay]` after the rail coordinates).
 
 ## Crates
 

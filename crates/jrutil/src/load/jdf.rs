@@ -1,16 +1,19 @@
 //! Reading the road compiler's inputs from disk.
 //!
-//! Batches are one ZIP each in a directory and are named after their file (without `.zip`):
-//! the name is the export's own identifier and the compiler's stated order. They are listed
-//! here and read one by one when the pipeline asks ([`read_batch`]), so the build never holds
-//! them all as read. A batch that cannot be decoded is still returned, with the reason:
-//! dropping it is the compiler's decision (JDF-R004). The stop catalogues are the CSV files below a directory, in ordinal order of
+//! Batches are one ZIP each: files of a directory, named after their file (without `.zip`), or
+//! the members of a national export, named `<export>-<member>` (`vld-1234`), the names Oběhy
+//! has always staged them under. The name is the batch's identifier and the compiler's stated
+//! order. Batches are listed here and read one by one when the pipeline asks ([`read_batch`]),
+//! so the build never holds them all as read. A batch that cannot be decoded is still
+//! returned, with the reason: dropping it is the compiler's decision (JDF-R004). The stop
+//! catalogues are the CSV files below a directory, in ordinal order of
 //! their relative paths (JDF-R005). Every file read is listed with its SHA-256: together they
 //! are the identity of the build's inputs.
 
 use std::fs;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use jr_formats::geodata::{catalogue, filter_rules, gazetteer, registry, route_rules};
 use jr_formats::jdf::{self, JdfError};
@@ -32,7 +35,19 @@ const PRESENTATION: &str = "presentation.csv";
 #[derive(Debug, Clone)]
 pub struct BatchFile {
     pub name: String,
-    pub path: PathBuf,
+    source: BatchSource,
+}
+
+#[derive(Debug, Clone)]
+enum BatchSource {
+    /// A ZIP of its own.
+    File(PathBuf),
+    /// A member of a national export.
+    Member {
+        archive: PathBuf,
+        export: jdf::Export,
+        member: jdf::Member,
+    },
 }
 
 /// A batch as read, and its place in the list of inputs.
@@ -45,7 +60,16 @@ pub struct LoadedBatch {
 
 /// Reads and decodes one batch.
 pub fn read_batch(file: &BatchFile) -> Result<LoadedBatch, LoadError> {
-    let bytes = read(&file.path)?;
+    let bytes = match &file.source {
+        BatchSource::File(path) => read(path)?,
+        BatchSource::Member {
+            archive,
+            export,
+            member,
+        } => export
+            .read(member)
+            .map_err(|error| invalid(archive, error))?,
+    };
     let input = (format!("batches/{}.zip", file.name), sha256(&bytes));
     Ok(LoadedBatch {
         read: jdf::read_zip(Cursor::new(bytes)),
@@ -73,14 +97,48 @@ pub struct Sources {
 pub fn load(spec: &JdfSpec) -> Result<Sources, LoadError> {
     let mut inputs = Vec::new();
 
-    let mut batches: Vec<BatchFile> = files_below(&spec.batches, "zip", false)?
-        .into_iter()
-        .map(|(name, path)| BatchFile {
-            name: name[..name.len() - ".zip".len()].to_owned(),
-            path,
-        })
-        .collect();
+    let mut batches: Vec<BatchFile> = Vec::new();
+    if let Some(directory) = &spec.batches {
+        for (name, path) in files_below(directory, "zip", false)? {
+            batches.push(BatchFile {
+                name: name[..name.len() - ".zip".len()].to_owned(),
+                source: BatchSource::File(path),
+            });
+        }
+    }
+    for export in &spec.exports {
+        let archive = jdf::Export::open(Arc::from(read(&export.archive)?))
+            .map_err(|error| invalid(&export.archive, error))?;
+        let members = archive
+            .batches()
+            .map_err(|error| invalid(&export.archive, error))?;
+        if members.is_empty() {
+            return Err(invalid(&export.archive, "no batch (*.zip) in it"));
+        }
+        for member in members {
+            batches.push(BatchFile {
+                name: format!("{}-{}", export.name, member.stem()),
+                source: BatchSource::Member {
+                    archive: export.archive.clone(),
+                    export: archive.clone(),
+                    member,
+                },
+            });
+        }
+    }
     batches.sort_by(|a, b| a.name.cmp(&b.name));
+    // Names are identifiers and file names downstream: two that differ only by case are one.
+    let mut names: Vec<String> = batches
+        .iter()
+        .map(|batch| batch.name.to_lowercase())
+        .collect();
+    names.sort_unstable();
+    if let Some(pair) = names.windows(2).find(|pair| pair[0] == pair[1]) {
+        return Err(LoadError::DuplicateBatch(pair[0].clone()));
+    }
+    if batches.is_empty() {
+        return Err(LoadError::NoBatches);
+    }
 
     let catalogue_files = if spec.catalogues.is_file() {
         let name = spec

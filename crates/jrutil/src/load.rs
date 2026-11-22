@@ -20,4 +20,8 @@ pub enum LoadError {
     Invalid { path: PathBuf, problem: String },
     #[error("{path} does not match the snapshot manifest ({what})")]
     Changed { path: PathBuf, what: &'static str },
+    #[error("the specification names no JDF batch (`batches` or `exports`)")]
+    NoBatches,
+    #[error("two JDF batches are named {0} (names compared ignoring case)")]
+    DuplicateBatch(String),
 }

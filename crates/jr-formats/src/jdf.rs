@@ -1,6 +1,7 @@
 //! JDF batches: the Czech bus and urban timetable exchange format, versions 1.8 to 1.11.
 //!
-//! A batch is a ZIP or a directory of CP1250 text files. [`read_zip`] and [`read_files`] return
+//! A batch is a ZIP or a directory of CP1250 text files; a national export ([`Export`]) is a ZIP
+//! of batch ZIPs. [`read_zip`] and [`read_files`] return
 //! every relation in file order with every field as written (JDF-R017–R024,
 //! `docs/rules/jdf-read.md`): one record type per relation, the superset of all versions, where a
 //! field the batch's version does not have is `None`. Nothing is defaulted, repaired or resolved:
@@ -14,6 +15,7 @@
 //! without terminator) are read. Nothing panics on input.
 
 mod codes;
+mod export;
 mod files;
 mod grammar;
 mod records;
@@ -23,6 +25,7 @@ use std::fmt;
 use std::io::{Read as _, Seek};
 
 pub use codes::{CompanyType, Km, NoteType, RouteType, TimeCell, TransportMode};
+pub use export::{Export, Member};
 pub use records::{
     Agency, AgencyAlternation, AlternateRouteName, AttributeRef, Header, Reservation, Route,
     RouteInfo, RouteIntegration, RouteStop, ServiceNote, Stop, StopPost, Transfer, Trip, TripGroup,

@@ -470,9 +470,10 @@ pub fn jdf(spec: &JdfSpec, use_cache: bool) -> Result<(), BuildError> {
         presentation::route_presentation(&timetable, &sources.presentation, &mut diagnostics)?;
     pass(&mut timetable, edits, &precedence, &mut diagnostics)?;
 
-    // The filtered feed is the road timetable as it stands before the overlay.
-    let before_overlay =
-        (spec.filtered.is_some() && spec.overlay.is_some()).then(|| timetable.clone());
+    // The filtered feed is the road timetable as it stands before the overlay and the shapes.
+    let before_overlay = (spec.filtered.is_some()
+        && (spec.overlay.is_some() || spec.shapes.is_some()))
+    .then(|| timetable.clone());
     let mut overlay_sources = Vec::new();
     let mut overlay_summary = None;
     if let Some(overlay) = &spec.overlay {
@@ -499,6 +500,15 @@ pub fn jdf(spec: &JdfSpec, use_cache: bool) -> Result<(), BuildError> {
     let (edits, route_stop_order) = route_stops::route_stops(&timetable);
     pass(&mut timetable, edits, &precedence, &mut diagnostics)?;
     stages.done("presentation and route stops");
+
+    let route_shapes = match &spec.shapes {
+        Some(shapes_spec) => {
+            let summary = route_shapes(&mut timetable, shapes_spec, &precedence, &mut diagnostics)?;
+            stages.done("route shapes");
+            Some(summary)
+        }
+        None => None,
+    };
 
     let publish: PublishPolicy = policy("publish.toml");
     let inputs_digest = digest_of_lines(&inputs);
@@ -544,6 +554,7 @@ pub fn jdf(spec: &JdfSpec, use_cache: bool) -> Result<(), BuildError> {
                 section(&route_presentation),
             )),
             Some(("route_stop_order".to_owned(), section(&route_stop_order))),
+            route_shapes.map(|summary| ("route_shapes".to_owned(), section(&summary))),
         ]
         .into_iter()
         .flatten()
