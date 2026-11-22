@@ -419,6 +419,12 @@ pub mod overlay {
         named(source, "stop-place", sha(group_key, 16))
     }
 
+    /// A source's stop place under the ID the reviewed registry pins for it (the registry's
+    /// `place_id`, an ID this scheme issued when the place was first seen).
+    pub fn registered_place(place_id: &str) -> PublicId {
+        PublicId(place_id.into())
+    }
+
     /// A route the source runs in its own mode or on its own: `line` is the national line it
     /// belongs to, or what stands for one when there is none.
     pub fn route(source: &str, source_route: &str, line: &str) -> PublicId {

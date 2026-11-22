@@ -1,7 +1,8 @@
 # Which source of a contested value wins (jr_model::edit::Precedence). Strongest first; a source
 # not listed is weaker than every listed one.
 
-# Positions. A surveyed catalogue beats reviewed corrections, which beat regional catalogues and
-# feeds, which beat OpenStreetMap; estimates along a route are last. An exact position always
-# beats an estimated one, whatever its source.
-position = ["sr70", "gapfill", "catalogue", "overlay", "osm", "route_time", "route_end"]
+# Positions. The railway's surveyed catalogue comes first. A regional feed overlaid on a road
+# timetable states where its own stops are and beats what the national side gathered (reviewed
+# corrections, regional catalogues, OpenStreetMap: OVL-R091); estimates along a route are last.
+# An exact position always beats an estimated one, whatever its source.
+position = ["sr70", "overlay", "gapfill", "catalogue", "osm", "route_time", "route_end"]

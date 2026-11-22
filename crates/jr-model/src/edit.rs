@@ -25,7 +25,7 @@ use crate::identity::PublicId;
 use crate::timetable::{
     Agency, Assignment, BoardingPoint, Call, CallKey, ConnectionClaim, CoordSource, Note, Place,
     Position, Precision, Restriction, RestrictionScope, Route, RouteStop, Scope, Shape, SourceKey,
-    Target, Timetable, Transfer, Trip, TripShape, Violation,
+    Target, Timetable, Transfer, Trip, TripShape, Violation, Zone,
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -97,6 +97,13 @@ pub enum Edit {
     SetTripHeadsign {
         trip: TripId,
         headsign: Option<Sym>,
+    },
+    /// The tariff zones of one call (named by its published sequence); an empty list clears
+    /// them.
+    SetCallZones {
+        trip: TripId,
+        sequence: i32,
+        zones: Box<[Zone]>,
     },
     /// Removes calls of a trip, named by their published sequences; the other calls keep
     /// theirs. What was stated for a removed call goes with it: connection claims made at it,
@@ -722,6 +729,21 @@ fn apply_one(
             for call in &mut row.calls {
                 call.route_stop = None;
             }
+            Target::Trip(trip)
+        }
+        Edit::SetCallZones {
+            trip,
+            sequence,
+            zones,
+        } => {
+            let zones = timetable.zone_sets.intern(&zones);
+            let row = timetable.trips.get_mut(trip).ok_or("unknown trip")?;
+            let call = row
+                .calls
+                .iter_mut()
+                .find(|call| call.sequence == sequence)
+                .ok_or("unknown call")?;
+            call.zones = zones;
             Target::Trip(trip)
         }
         Edit::SetTripHeadsign { trip, headsign } => {
