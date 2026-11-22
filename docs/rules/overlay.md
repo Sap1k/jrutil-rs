@@ -2431,3 +2431,20 @@ all of the first four items by construction.
 - **Q15 Equivalent ties.** One source trip enriching several semantically identical base trips
   (`trip_equivalent_tie_expanded`) versus BASE_PLAN 12.3. Recommendation: port (they are national
   duplicates; R084 already dedups under authority) and amend BASE_PLAN.
+
+---
+
+## 11. Rules added by the rewrite
+
+#### OVL-R130 Stated times that would run backwards are not taken
+
+- **What**: a part of a base trip whose selection (R080) would give calls whose times run
+  backwards (source times at aligned calls next to base times at the others, or further calls
+  between them) keeps the base trip's times and takes no further calls; its boarding points and
+  stop headsigns are still taken. Diagnostic `overlay_schedule_not_monotonic`.
+- **Where**: `crates/jr-overlay/src/projection/batch.rs`.
+- **Why**: the timetable's invariant (`Timetable::check`) forbids a trip's times running
+  backwards; F# wrote such calls to `stop_times.txt` unchecked.
+- **Pinned by**: none on the golden slice yet (counted in the projection report).
+- **Constants**: none.
+- **Diagnostic**: `overlay_schedule_not_monotonic`.

@@ -226,6 +226,11 @@ modes = ["bus", "tram"]
 source_native_modes = ["tram"]
 [capabilities]
 schedules = {{ minimum_tier = "pattern_nearest" }}
+stop_coordinates = {{}}
+boarding_points = {{}}
+call_boarding_points = {{ minimum_tier = "pattern_edit_nearest" }}
+transfers = {{ minimum_tier = "pattern_nearest" }}
+headsigns = {{}}
 {extra}
 "#
     ))

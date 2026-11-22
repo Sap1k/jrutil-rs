@@ -55,6 +55,8 @@ pub struct Unmatched {
     pub code: &'static str,
     /// The diagnostic message.
     pub message: String,
+    /// The date it concerns, for a per-date reason.
+    pub date: Option<u32>,
 }
 
 /// One source trip's result.
@@ -147,23 +149,27 @@ pub fn match_trip(prepared: &Prepared<'_>, source_index: u32, trip_index: u32) -
     }
     let subject = trip_subject(source, trip);
     let calls = source.trip_calls(trip);
-    let unmatched = |outcome: &mut Outcome, rule, code: &'static str, message: String| {
-        outcome.diagnostics.push(
-            Diagnostic::new(code, Severity::Warning, subject.clone(), message.clone()).rule(rule),
-        );
-        outcome.unmatched.push(Unmatched {
-            source: source_index,
-            trip: trip_index,
-            code,
-            message,
-        });
-    };
+    let unmatched =
+        |outcome: &mut Outcome, rule, code: &'static str, message: String, date: Option<u32>| {
+            outcome.diagnostics.push(
+                Diagnostic::new(code, Severity::Warning, subject.clone(), message.clone())
+                    .rule(rule),
+            );
+            outcome.unmatched.push(Unmatched {
+                source: source_index,
+                trip: trip_index,
+                code,
+                message,
+                date,
+            });
+        };
     if calls.is_empty() {
         unmatched(
             &mut outcome,
             OVL_R073,
             "trip_call_pattern_unavailable",
             "The active source trip has no eligible parsed call pattern".to_owned(),
+            None,
         );
         return outcome;
     }
@@ -289,7 +295,13 @@ pub fn match_trip(prepared: &Prepared<'_>, source_index: u32, trip_index: u32) -
                     "{date_text} has {} equal-best candidates across {classes} semantic classes",
                     best.len()
                 );
-                unmatched(&mut outcome, OVL_R071, "trip_same_date_ambiguous", message);
+                unmatched(
+                    &mut outcome,
+                    OVL_R071,
+                    "trip_same_date_ambiguous",
+                    message,
+                    Some(date as u32),
+                );
                 outcome.pending.push(Pending {
                     source: source_index,
                     trip: trip_index,
@@ -329,7 +341,7 @@ pub fn match_trip(prepared: &Prepared<'_>, source_index: u32, trip_index: u32) -
                 "Signature candidates exist, but none is uniquely active on a shared operating date",
             )
         };
-        unmatched(&mut outcome, OVL_R073, code, message.to_owned());
+        unmatched(&mut outcome, OVL_R073, code, message.to_owned(), None);
     }
     outcome
 }

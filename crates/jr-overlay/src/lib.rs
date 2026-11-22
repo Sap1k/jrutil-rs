@@ -24,12 +24,13 @@ pub mod authority;
 pub mod matching;
 pub mod prepare;
 pub mod profile;
+pub mod projection;
 pub mod report;
 
 use jr_formats::geodata::registry::OverlayPlace;
 use jr_formats::geodata::{stop_overrides, synonyms};
 use jr_formats::gtfs::Feed;
-use jr_model::{Diagnostics, EditBuilder, Edits, Timetable};
+use jr_model::{Diagnostics, Edits, Timetable};
 
 use profile::{BaseProfile, SourceProfile};
 use report::ReportTable;
@@ -63,6 +64,8 @@ pub struct Overlaid {
     pub edits: Edits,
     /// Review reports, each a table the command line writes as `<name>.csv`.
     pub reports: Vec<ReportTable>,
+    /// What the batch does, in counts, for the diagnostics summary.
+    pub summary: projection::Summary,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -78,6 +81,7 @@ pub fn rules() -> impl Iterator<Item = jr_model::Rule> {
     [prepare::RULES, authority::RULES]
         .into_iter()
         .chain(matching::RULES.iter().copied())
+        .chain(projection::RULES.iter().copied())
         .flatten()
         .copied()
 }
@@ -86,15 +90,26 @@ pub fn overlay(
     input: OverlayInput<'_>,
     diagnostics: &mut Diagnostics,
 ) -> Result<Overlaid, OverlayError> {
-    let base = input.base;
-    let prepared = prepare::prepare(input, diagnostics)?;
-    let authority = authority::authority(&prepared, diagnostics);
-    let matches = matching::match_trips(&prepared, &authority, diagnostics);
-    // Projection is not built yet: nothing is changed.
+    // The stages report into one sink; what stands once every decision is final (R120) is
+    // handed on.
+    let mut found = Diagnostics::new();
+    let prepared = prepare::prepare(input, &mut found)?;
+    let authority = authority::authority(&prepared, &mut found);
+    let matches = matching::match_trips(&prepared, &authority, &mut found);
+    let projected = projection::project(&prepared, &authority, &matches, &mut found);
+    diagnostics.append(projection::effective(
+        &prepared,
+        &matches,
+        &authority,
+        &projected.accepted,
+        found,
+    ));
     let mut reports = prepared.reports();
-    reports.extend(matches.reports(&prepared, &authority));
+    reports.extend(matches.reports(&prepared));
+    reports.extend(projected.reports);
     Ok(Overlaid {
-        edits: EditBuilder::new(base, PASS).finish(),
+        edits: projected.edits,
         reports,
+        summary: projected.summary,
     })
 }

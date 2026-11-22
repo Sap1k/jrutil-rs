@@ -10,7 +10,7 @@ mod availability;
 pub mod candidates;
 mod coverage;
 mod decide;
-mod report;
+pub(crate) mod report;
 pub mod score;
 
 use jr_model::{DateSet, Diagnostics, Rule};
@@ -106,10 +106,10 @@ pub struct Matches {
 }
 
 impl Matches {
-    pub fn reports(&self, prepared: &Prepared<'_>, authority: &Authority) -> Vec<ReportTable> {
+    /// The matching reports (the unmatched reasons are completed by projection).
+    pub fn reports(&self, prepared: &Prepared<'_>) -> Vec<ReportTable> {
         vec![
             report::trip_candidate_scores(prepared, self),
-            report::unmatched_trip_reasons(prepared, authority, self),
             report::ambiguous_trip_candidates(prepared, self),
             report::pattern_edits(prepared, self),
         ]

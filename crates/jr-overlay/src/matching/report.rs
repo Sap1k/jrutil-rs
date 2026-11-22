@@ -7,7 +7,7 @@ use jr_model::timetable::Mode;
 use sha2::{Digest, Sha256};
 
 use super::{Candidate, Matches};
-use crate::authority::{Authority, AuthorityLine, trip_subject};
+use crate::authority::trip_subject;
 use crate::prepare::{Prepared, PreparedSource};
 use crate::report::ReportTable;
 
@@ -202,7 +202,7 @@ pub fn pattern_edits(prepared: &Prepared<'_>, matches: &Matches) -> ReportTable 
 
 /// The F# mode-class name of a source route (`ferry` for water, `heavy-rail` for rail,
 /// `other:<route_type>` without a mode), for the report only.
-fn mode_name(source: &PreparedSource<'_>, route: u32) -> String {
+pub(crate) fn mode_name(source: &PreparedSource<'_>, route: u32) -> String {
     let source_route = &source.routes[route as usize];
     match source_route.mode {
         Some(Mode::Bus) => "bus".into(),
@@ -218,107 +218,5 @@ fn mode_name(source: &PreparedSource<'_>, route: u32) -> String {
                 route_type.map_or_else(String::new, |t| t.to_string())
             )
         }
-    }
-}
-
-/// One row per unmatched reason in the order found, then the active trips accepted on no date
-/// without a reason; distinct. The disposition is what became of the trip elsewhere: added as
-/// its own trip on a source line, projected under authority, bound on other dates, or withheld.
-/// (F# read the disposition from the projection; here a projection or binding stands for it.)
-pub fn unmatched_trip_reasons(
-    prepared: &Prepared<'_>,
-    authority: &Authority,
-    matches: &Matches,
-) -> ReportTable {
-    let flags = |count: fn(&PreparedSource<'_>) -> usize| -> Vec<Vec<bool>> {
-        prepared
-            .sources
-            .iter()
-            .map(|s| vec![false; count(s)])
-            .collect()
-    };
-    let trips = |s: &PreparedSource<'_>| s.trips.len();
-    let (mut bound, mut projected, mut native) = (flags(trips), flags(trips), flags(trips));
-    for binding in &matches.bindings {
-        bound[binding.source as usize][binding.trip as usize] = true;
-    }
-    for projection in &authority.projections {
-        projected[projection.source as usize][projection.trip as usize] = true;
-        if matches!(projection.line, AuthorityLine::SourceRoute { .. }) {
-            native[projection.source as usize][projection.trip as usize] = true;
-        }
-    }
-    let mut diagnosed = flags(trips);
-    let row = |source_index: u32, trip_index: u32, code: &str, disposition: &str, message: &str| {
-        let source = &prepared.sources[source_index as usize];
-        let trip = &source.trips[trip_index as usize];
-        let feed_route =
-            &source.feed.routes[source.routes[trip.route as usize].feed_index as usize];
-        vec![
-            source.source_id().to_owned(),
-            source.feed.trips[trip.feed_index as usize]
-                .trip_id
-                .to_string(),
-            feed_route.route_id.to_string(),
-            mode_name(source, trip.route),
-            code.to_owned(),
-            disposition.to_owned(),
-            message.to_owned(),
-        ]
-    };
-    let mut seen = HashSet::new();
-    let mut rows = Vec::new();
-    for unmatched in &matches.unmatched {
-        let (s, t) = (unmatched.source as usize, unmatched.trip as usize);
-        diagnosed[s][t] = true;
-        let disposition = if native[s][t] {
-            "source_native_addition"
-        } else if projected[s][t] {
-            "authoritative_projection"
-        } else if bound[s][t] {
-            "matched_on_other_dates"
-        } else {
-            "withheld"
-        };
-        let values = row(
-            unmatched.source,
-            unmatched.trip,
-            unmatched.code,
-            disposition,
-            &unmatched.message,
-        );
-        if seen.insert(values.clone()) {
-            rows.push(values);
-        }
-    }
-    for (s, source) in prepared.sources.iter().enumerate() {
-        for (t, trip) in source.trips.iter().enumerate() {
-            if trip.dates.is_empty() || bound[s][t] || projected[s][t] || diagnosed[s][t] {
-                continue;
-            }
-            let values = row(
-                s as u32,
-                t as u32,
-                "trip_unclassified_unmatched",
-                "withheld",
-                "The active trip produced neither matching evidence nor a more specific matching diagnostic",
-            );
-            if seen.insert(values.clone()) {
-                rows.push(values);
-            }
-        }
-    }
-    ReportTable {
-        name: "unmatched_trip_reasons",
-        header: vec![
-            "source_id",
-            "source_trip_id",
-            "source_route_id",
-            "mode",
-            "reason_code",
-            "disposition",
-            "message",
-        ],
-        rows,
     }
 }

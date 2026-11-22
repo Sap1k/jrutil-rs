@@ -151,6 +151,7 @@ pub fn resolve(
                 trip: p.trip,
                 code: "base_snapshot_capacity_gap",
                 message,
+                date: Some(p.date),
             });
         }
     }

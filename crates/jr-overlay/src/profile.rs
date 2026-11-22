@@ -53,6 +53,9 @@ pub(crate) const TRIP_COLUMNS: [&str; 11] = [
     "cars_allowed",
 ];
 
+/// The `transfers.txt` column of a guaranteed wait (OVL-R108), read as an extra.
+pub(crate) const TRANSFER_WAIT: &str = "max_waiting_time";
+
 /// The standard `stops.txt` text columns the reader types.
 pub(crate) const STOP_COLUMNS: [&str; 10] = [
     "stop_id",
@@ -124,6 +127,12 @@ impl SourceProfile {
         let stops = self.extra_stop_columns();
         if !stops.is_empty() {
             request.extra_columns.push(("stops.txt".into(), stops));
+        }
+        if self.capabilities.contains_key(&Capability::Transfers) {
+            // OVL-R108: the guaranteed wait is not a column the reader types.
+            request
+                .extra_columns
+                .push(("transfers.txt".into(), vec![TRANSFER_WAIT.into()]));
         }
         if let Some(claim) = &self.hooks.cis_line_claim {
             request.tables.push(claim.table.clone());
