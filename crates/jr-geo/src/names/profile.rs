@@ -57,7 +57,7 @@ pub struct Profile {
     replacements: Vec<(Box<str>, Box<str>)>,
     word: WordCharacters,
     separators: Vec<char>,
-    terminators: Vec<char>,
+    pub(super) terminators: Vec<char>,
     pub(super) synonyms: SynonymUse,
     pub(super) trim_unmapped: Vec<char>,
 }

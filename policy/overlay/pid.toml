@@ -1,0 +1,71 @@
+# The PID (Prague) source profile (docs/rules/overlay.md section 5). Values are those effective
+# in the combined F# run (section 2.3, verdict Q2): the coordinate-identity tier, route tiers
+# and capabilities are the union over both sources there, so they are stated here as they apply.
+
+source_id = "pid-gtfs"
+key_namespace = "pid"
+maximum_snapshot_skew_days = 7
+
+[routes]
+# OVL-R013/R028: PID's own rail (route_type 2) and every rail mode stay out.
+excluded_route_types = [2]
+excluded_modes = ["rail"]
+tiers = ["companion_assertion", "structural_trip_evidence"]
+
+[stops]
+maximum_distance_metres = 300.0
+split_flat_groups_by_name = true
+# Effective through the F# merge (maximum over sources).
+coordinate_identity = { maximum_metres = 25.0, minimum_margin_metres = 10.0 }
+context = { enabled = true, minimum_mapped_calls = 1, maximum_unresolved_groups_per_trip = 1 }
+
+[trips]
+time_resolution_seconds = 60
+exact_pattern_proximity = true
+keep_source_calls = false
+tiers = ["full_signature", "pattern_endpoints", "pattern_first", "pattern_nearest", "pattern_edit_nearest"]
+pattern_edit = { enabled = true, maximum_edits = 3, minimum_agreement = 0.9, require_same_endpoints = true }
+
+[authority]
+modes = ["bus", "tram", "metro", "trolleybus", "water"]
+source_native_modes = ["bus", "tram", "metro", "trolleybus", "water"]
+# OVL-R062: PID's integrated system; the historic trams 41 and 42 run on their own tariff.
+integrated_systems = [
+    { system = "30001", excluded_lines = ["199041", "199042"], maximum_silenced_lines = 20 },
+]
+
+# OVL-R077. stop_zones is effective through the F# union but inert without a zones hook.
+[capabilities]
+stop_coordinates = {}
+boarding_points = {}
+call_boarding_points = { minimum_tier = "pattern_edit_nearest" }
+route_short_name = {}
+route_long_name = {}
+route_color = {}
+route_text_color = {}
+transfers = { minimum_tier = "pattern_nearest" }
+stop_zones = {}
+schedules = { minimum_tier = "pattern_nearest" }
+# Verdict Q12: F# applied source headsigns to authority slices.
+headsigns = {}
+
+# OVL-R015: PID trip IDs end in the revision date (991_11915_260207).
+[hooks.revision]
+column = "trip_id"
+pattern = '_(?<revision>\d{6})(?:_|$)'
+date_format = "%y%m%d"
+
+# OVL-R016: PID's ASW node groups the posts of one stop place.
+[hooks.stop_group]
+key_column = "asw_node_id"
+
+# OVL-R017: PID's ASW stop number keys a post.
+[hooks.post_key]
+column = "asw_stop_id"
+
+# OVL-R018: a sub-agency's route licence is the CIS line it runs.
+[hooks.cis_line_claim]
+table = "route_sub_agencies.txt"
+source_keys = ["route_id", "sub_agency_id"]
+lookup_keys = ["route_id", "sub_agency_id"]
+value_column = "route_licence_number"

@@ -1,0 +1,51 @@
+# The IDS JMK (South Moravia) source profile (docs/rules/overlay.md section 5). Values are those
+# effective in the combined F# run (section 2.3, verdict Q2).
+
+source_id = "ids-jmk-gtfs"
+key_namespace = "ids-jmk"
+maximum_snapshot_skew_days = 7
+
+[routes]
+excluded_route_types = [2]
+excluded_modes = ["rail"]
+# Effective through the F# union; the companion tier finds nothing without a line-claim hook.
+tiers = ["companion_assertion", "structural_trip_evidence"]
+
+[stops]
+maximum_distance_metres = 300.0
+split_flat_groups_by_name = true
+coordinate_identity = { maximum_metres = 25.0, minimum_margin_metres = 10.0 }
+context = { enabled = true, minimum_mapped_calls = 1, maximum_unresolved_groups_per_trip = 1 }
+
+[trips]
+time_resolution_seconds = 60
+exact_pattern_proximity = true
+keep_source_calls = false
+tiers = ["full_signature", "pattern_endpoints", "pattern_first", "pattern_nearest", "pattern_edit_nearest"]
+pattern_edit = { enabled = true, maximum_edits = 3, minimum_agreement = 0.9, require_same_endpoints = true }
+
+[authority]
+modes = ["bus", "tram", "trolleybus", "water"]
+source_native_modes = ["water"]
+
+[capabilities]
+stop_coordinates = {}
+boarding_points = {}
+call_boarding_points = { minimum_tier = "pattern_edit_nearest" }
+route_short_name = {}
+route_long_name = {}
+route_color = {}
+route_text_color = {}
+transfers = { minimum_tier = "pattern_nearest" }
+stop_zones = {}
+schedules = { minimum_tier = "pattern_nearest" }
+headsigns = {}
+
+# OVL-R019: api.txt maps each trip to the operator's line and course.
+[hooks.operational_crosswalk]
+member = "api.txt"
+pattern = '^Linka/CVlaku = trip_id: (?<line>[^/]+)/(?<course>.+) = (?<trip>[^=\s]+)$'
+
+# OVL-R101: stop zone_ids are IDS JMK tariff zones.
+[hooks.zones]
+system = "ids-jmk"

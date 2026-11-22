@@ -14,12 +14,17 @@
 //! - road stop identity (`docs/rules/jdf-merge.md`, JDF-R214–R215): lower-case, `n.l.` expanded,
 //!   letters, numbers and a closing `.`; each token replaced by its canonical synonym.
 //!
+//! - regional overlay stop names (`docs/rules/overlay.md`, OVL-R032–R035, `rank`): lower case,
+//!   letters and numbers, a closing `.` marking an abbreviation; names compare word by word
+//!   through abbreviations and expansions ([`StopNameRanker`]).
+//!
 //! Word lists and tables are data ([`NameTables`] from the rail policy, the road profiles from
 //! `data/names/road_names.toml`, the synonym table `data/names/stop_synonyms.txt`), never
 //! literals here. Lengths and edit distances count Unicode scalar values (`char`s).
 
 mod analyzer;
 mod profile;
+mod rank;
 mod synonyms;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -29,6 +34,7 @@ use serde::Deserialize;
 
 pub use analyzer::{Analyzer, NameMatch};
 pub use profile::{Case, Profile, SynonymUse, WordCharacters};
+pub use rank::{HeadsignReason, HeadsignTables, RankTables, StopNameRanker};
 pub use synonyms::SynonymConflict;
 
 use profile::CharacterMap;

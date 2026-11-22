@@ -1,0 +1,45 @@
+# The regional overlay's name rules (docs/rules/overlay.md, OVL-R032–R035; read by
+# crates/jr-overlay, compiled by jr_geo::names). Both use the shared synonym table
+# data/names/stop_synonyms.txt besides what is listed here.
+
+# OVL-R032: the words of a stop name in a source stop group's registry key and in the stable
+# name key of a base stop place (lower case, letters and numbers, everything else separates).
+# The registry (overlay_places.csv) stores keys made this way: changing it moves pinned places.
+[group_name]
+case = "lower"
+word_characters = "alphanumeric"
+
+# OVL-R033, R034: stop-name equivalence.
+[rank]
+# A segment naming a junction loses the CIS distance written after it ("Miroslav,rozc.4.0").
+junction_marker = "rozc"
+# Undotted words of at least this many letters match when one begins the other.
+minimum_prefix = 3
+# Acronyms a prefix cannot find, before the synonym table.
+expansions = [
+    ["žst", "železniční stanice"],
+    ["zd", "zemědělské družstvo"],
+    ["mš", "mateřská škola"],
+    ["zš", "základní škola"],
+    ["kd", "kulturní dům"],
+]
+
+# Words are runs of letters and numbers; a `.` closes the word it ends and marks it dotted.
+[rank.tokens]
+case = "lower"
+word_characters = "alphanumeric"
+terminators = ["."]
+
+# OVL-R035: headsigns that are route descriptions, and terminal-name display abbreviations.
+[headsigns]
+composite_words = ["via", "přes"]
+composite_characters = ["→", ";"]
+terminal_abbreviations = [
+    ["žel", "železniční"],
+    ["st", "stanice"],
+    ["aut", "autobusové"],
+    ["aut", "autobusová"],
+    ["nám", "náměstí"],
+    ["sídl", "sídliště"],
+    ["zast", "zastávka"],
+]

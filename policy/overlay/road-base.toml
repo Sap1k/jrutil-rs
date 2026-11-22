@@ -1,0 +1,47 @@
+# The national road timetable compiled from JDF as the overlay's base (verdict Q8,
+# docs/rules/overlay.md section 5 "Assumptions of a road/JDF base").
+
+line_namespace = "cis:line"
+# OVL-R062: LinExt integrated systems are route assignments of this feature.
+integrated_system_feature = "integrated_transport"
+# OVL-R056: JDF dates a trip by its first departure.
+dated_by_departure = true
+# OVL-R058: a CIS line's výluka routes yield to its regular route.
+prefer_regular_routes = true
+# OVL-R026, R045, R046: JDF stops placed by estimate may be renamed and placed by a source.
+estimated_places_correctable = true
+# The publisher's approximate-stop suffix, for showing base names in review reports only.
+estimated_name_suffix = " [?]"
+# OVL-R036: JDF publishes trolleybus service as road/bus.
+compatible_modes = [["bus", "trolleybus"]]
+
+# OVL-R038: GTFS route types (basic and extended) as modes. Cable cars, gondolas and funiculars
+# are not listed: the F# reference gave them no mode class a base route shares.
+[[gtfs_route_types]]
+mode = "tram"
+codes = [0]
+ranges = [[900, 906]]
+
+[[gtfs_route_types]]
+mode = "metro"
+codes = [1]
+ranges = [[400, 405]]
+
+[[gtfs_route_types]]
+mode = "rail"
+codes = [2]
+ranges = [[100, 117]]
+
+[[gtfs_route_types]]
+mode = "bus"
+codes = [3]
+ranges = [[200, 209], [700, 716]]
+
+[[gtfs_route_types]]
+mode = "water"
+codes = [4]
+ranges = [[1000, 1021]]
+
+[[gtfs_route_types]]
+mode = "trolleybus"
+codes = [11, 800]
