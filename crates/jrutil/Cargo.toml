@@ -14,6 +14,7 @@ jr-czptt.workspace = true
 jr-jdf.workspace = true
 jr-geo.workspace = true
 jr-enrich.workspace = true
+jr-overlay.workspace = true
 jr-publish.workspace = true
 clap.workspace = true
 csv.workspace = true

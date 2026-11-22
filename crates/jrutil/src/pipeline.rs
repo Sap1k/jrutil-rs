@@ -18,7 +18,7 @@ use rayon::prelude::*;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
-use crate::spec::{CzpttSpec, FilteredSpec, JdfSpec, ShapesSpec};
+use crate::spec::{CzpttSpec, FilteredSpec, JdfSpec, OverlaySpec, ShapesSpec};
 use crate::{companion, load};
 
 /// The stop-name synonym table, shared by every road name matcher.
@@ -79,6 +79,10 @@ pub enum BuildError {
     Presentation(#[from] presentation::Tie),
     #[error(transparent)]
     Filtered(#[from] jr_jdf::filtered::FilterError),
+    #[error(transparent)]
+    Overlay(#[from] jr_overlay::OverlayError),
+    #[error("no overlay source profile is named {0}")]
+    UnknownProfile(String),
     #[error("cannot write {path}: {source}")]
     Write {
         path: String,
@@ -428,30 +432,63 @@ pub fn jdf(spec: &JdfSpec) -> Result<(), BuildError> {
     let mut timetable = assembled.timetable;
     stages.done("assemble");
 
-    let (edits, route_presentation) =
+    let (edits, mut route_presentation) =
         presentation::route_presentation(&timetable, &sources.presentation, &mut diagnostics)?;
     pass(&mut timetable, edits, &precedence, &mut diagnostics)?;
+
+    // The filtered feed is the road timetable as it stands before the overlay.
+    let before_overlay =
+        (spec.filtered.is_some() && spec.overlay.is_some()).then(|| timetable.clone());
+    let mut overlay_sources = Vec::new();
+    if let Some(overlay) = &spec.overlay {
+        overlay_sources = regional_overlay(
+            &mut timetable,
+            overlay,
+            spec.registry.as_deref(),
+            &synonym_lines,
+            &precedence,
+            &mut diagnostics,
+        )?;
+        stages.done("overlay");
+        // What the overlay brought is presented like the rest.
+        let (edits, again) =
+            presentation::route_presentation(&timetable, &sources.presentation, &mut diagnostics)?;
+        pass(&mut timetable, edits, &precedence, &mut diagnostics)?;
+        route_presentation.overridden_routes += again.overridden_routes;
+        for (field, count) in again.by_field {
+            *route_presentation.by_field.entry(field).or_default() += count;
+        }
+    }
     let (edits, route_stop_order) = route_stops::route_stops(&timetable);
     pass(&mut timetable, edits, &precedence, &mut diagnostics)?;
     stages.done("presentation and route stops");
 
     let publish: PublishPolicy = policy("publish.toml");
     let inputs_digest = digest_of_lines(&inputs);
+    let year = spec.timetable_year.to_string();
+    let reference = spec.reference_date.to_string();
+    let mut build_inputs: Vec<(&str, &str)> = vec![
+        ("national-jdf", &inputs_digest),
+        ("timetable-year", &year),
+        ("reference-date", &reference),
+    ];
+    let mut source_entries = vec![SourceEntry {
+        source_id: "national-jdf".to_owned(),
+        payload_sha256: inputs_digest.clone(),
+        payload_kind: Some("snapshot".to_owned()),
+    }];
+    for (source_id, digest) in &overlay_sources {
+        build_inputs.push((source_id, digest));
+        source_entries.push(SourceEntry {
+            source_id: source_id.clone(),
+            payload_sha256: digest.clone(),
+            payload_kind: Some("zip".to_owned()),
+        });
+    }
     let options = PublishOptions {
         compiler_version: compiler_version().to_owned(),
-        build_spec_sha256: build_spec_sha256(
-            JDF_POLICIES,
-            &[
-                ("national-jdf", &inputs_digest),
-                ("timetable-year", &spec.timetable_year.to_string()),
-                ("reference-date", &spec.reference_date.to_string()),
-            ],
-        ),
-        sources: vec![SourceEntry {
-            source_id: "national-jdf".to_owned(),
-            payload_sha256: inputs_digest,
-            payload_kind: Some("snapshot".to_owned()),
-        }],
+        build_spec_sha256: build_spec_sha256(JDF_POLICIES, &build_inputs),
+        sources: source_entries,
         feed_info: FeedInfo {
             publisher_name: publish.publisher_name,
             publisher_url: publish.publisher_url,
@@ -486,7 +523,7 @@ pub fn jdf(spec: &JdfSpec) -> Result<(), BuildError> {
 
     if let Some(filtered) = &spec.filtered {
         filtered_feed(
-            timetable,
+            before_overlay.unwrap_or(timetable),
             &assembled.lines,
             filtered,
             spec.reference_date,
@@ -496,6 +533,89 @@ pub fn jdf(spec: &JdfSpec) -> Result<(), BuildError> {
         stages.done("filtered feed");
     }
     Ok(())
+}
+
+/// Regional feeds overlaid on the road timetable: each source is read with what its profile
+/// asks for, the engine returns edits and review reports. Returns each source's ID and the
+/// SHA-256 of its feed, in source order.
+fn regional_overlay(
+    timetable: &mut Timetable,
+    spec: &OverlaySpec,
+    registry: Option<&Path>,
+    synonym_lines: &[synonyms::Line],
+    precedence: &Precedence,
+    diagnostics: &mut Diagnostics,
+) -> Result<Vec<(String, String)>, BuildError> {
+    use jr_overlay::profile::{BaseProfile, SourceProfile};
+
+    let mut loaded = Vec::with_capacity(spec.sources.len());
+    for source in &spec.sources {
+        let profile = SourceProfile::builtin(&source.profile)
+            .ok_or_else(|| BuildError::UnknownProfile(source.profile.clone()))?
+            .map_err(jr_overlay::OverlayError::from)?;
+        let (feed, digest) = load::gtfs::feed(&source.feed, &profile.reader())?;
+        let overrides = match &source.overrides {
+            Some(path) => load::gtfs::stop_overrides(path)?,
+            None => Vec::new(),
+        };
+        loaded.push((profile, feed, overrides, digest));
+    }
+    loaded.sort_by(|a, b| a.0.source_id.cmp(&b.0.source_id));
+    let digests: Vec<(String, String)> = loaded
+        .iter()
+        .map(|(profile, _, _, digest)| (profile.source_id.to_string(), digest.clone()))
+        .collect();
+    let places = match registry {
+        Some(directory) => load::gtfs::overlay_places(directory)?,
+        None => Vec::new(),
+    };
+    let base_profile = BaseProfile::road().map_err(jr_overlay::OverlayError::from)?;
+    let profiles: Vec<SourceProfile> = loaded.iter().map(|(profile, ..)| profile.clone()).collect();
+    let sources = loaded
+        .into_iter()
+        .zip(&profiles)
+        .map(
+            |((_, feed, overrides, _), profile)| jr_overlay::SourceInput {
+                profile,
+                feed,
+                overrides,
+            },
+        )
+        .collect();
+    let overlaid = jr_overlay::overlay(
+        jr_overlay::OverlayInput {
+            base: timetable,
+            base_profile: &base_profile,
+            sources,
+            places: &places,
+            synonyms: synonym_lines,
+        },
+        diagnostics,
+    )?;
+    pass(timetable, overlaid.edits, precedence, diagnostics)?;
+
+    if let Some(directory) = &spec.reports {
+        let io = |path: &Path| {
+            let path = path.display().to_string();
+            move |source| BuildError::Write { path, source }
+        };
+        std::fs::create_dir_all(directory).map_err(io(directory))?;
+        for report in &overlaid.reports {
+            let path = directory.join(format!("{}.csv", report.name));
+            let write = || -> Result<(), csv::Error> {
+                let mut writer = csv::WriterBuilder::new()
+                    .terminator(csv::Terminator::Any(b'\n'))
+                    .from_path(&path)?;
+                writer.write_record(&report.header)?;
+                for row in &report.rows {
+                    writer.write_record(row)?;
+                }
+                Ok(writer.flush()?)
+            };
+            write().map_err(|error| io(&path)(std::io::Error::other(error)))?;
+        }
+    }
+    Ok(digests)
 }
 
 /// The filtered road feed: the published road timetable without the lines other feeds publish

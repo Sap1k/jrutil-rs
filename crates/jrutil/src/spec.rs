@@ -26,6 +26,14 @@
 //! output = "out/jdf"
 //! registry_candidates = "out/stop-candidates.csv"   # optional
 //!
+//! [jdf.overlay]                         # optional: regional feeds overlaid on the road timetable
+//! reports = "out/overlay-reports"       # optional: the review reports, one CSV each
+//!
+//! [[jdf.overlay.sources]]
+//! profile = "pid"                       # a source profile shipped with the compiler
+//! feed = "sources/pid/gtfs.zip"
+//! overrides = "geodata/overlay/pid-stop-overrides.csv"   # optional
+//!
 //! [jdf.filtered]                        # optional: the road feed without other feeds' lines
 //! rules = "geodata/filtered-jdf/rules-v1.json"
 //! output = "out/jdf-filtered"           # gtfs.zip, line-snapshot.json, filter-report.json
@@ -70,6 +78,27 @@ pub struct JdfSpec {
     pub registry_candidates: Option<PathBuf>,
     /// The filtered road feed; not built without it.
     pub filtered: Option<FilteredSpec>,
+    /// Regional feeds overlaid on the road timetable before it is published.
+    pub overlay: Option<OverlaySpec>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OverlaySpec {
+    pub sources: Vec<OverlaySourceSpec>,
+    /// A directory for the review reports; it must not exist.
+    pub reports: Option<PathBuf>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OverlaySourceSpec {
+    /// The name of a source profile shipped with the compiler.
+    pub profile: String,
+    /// The source's GTFS feed, a ZIP.
+    pub feed: PathBuf,
+    /// The reviewed stop overrides for the source.
+    pub overrides: Option<PathBuf>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -165,6 +194,17 @@ impl BuildSpec {
             .flatten()
             {
                 *target = base.join(&*target);
+            }
+            if let Some(overlay) = &mut jdf.overlay {
+                if let Some(reports) = &mut overlay.reports {
+                    *reports = base.join(&*reports);
+                }
+                for source in &mut overlay.sources {
+                    source.feed = base.join(&source.feed);
+                    if let Some(overrides) = &mut source.overrides {
+                        *overrides = base.join(&*overrides);
+                    }
+                }
             }
             if let Some(filtered) = &mut jdf.filtered {
                 filtered.rules = base.join(&filtered.rules);

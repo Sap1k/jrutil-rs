@@ -721,6 +721,7 @@ dependencies = [
  "jr-model",
  "rayon",
  "serde",
+ "thiserror",
  "toml",
 ]
 
@@ -808,6 +809,7 @@ dependencies = [
  "jr-geo",
  "jr-jdf",
  "jr-model",
+ "jr-overlay",
  "jr-publish",
  "rayon",
  "serde",
