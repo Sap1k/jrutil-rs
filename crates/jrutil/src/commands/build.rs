@@ -3,11 +3,10 @@
 use std::path::Path;
 use std::process::ExitCode;
 
-use crate::pipeline;
+use crate::pipeline::{self, RunOptions};
 use crate::spec::BuildSpec;
 
-/// `use_cache`: whether caches named by the specification are read and written.
-pub fn run(spec_path: &Path, use_cache: bool) -> ExitCode {
+pub fn run(spec_path: &Path, options: &RunOptions) -> ExitCode {
     let spec = match BuildSpec::read(spec_path) {
         Ok(spec) => spec,
         Err(error) => {
@@ -16,13 +15,13 @@ pub fn run(spec_path: &Path, use_cache: bool) -> ExitCode {
         }
     };
     if let Some(czptt) = &spec.czptt
-        && let Err(error) = pipeline::czptt(czptt, use_cache)
+        && let Err(error) = pipeline::czptt(czptt, options)
     {
         eprintln!("error: czptt: {error}");
         return ExitCode::FAILURE;
     }
     if let Some(jdf) = &spec.jdf
-        && let Err(error) = pipeline::jdf(jdf, use_cache)
+        && let Err(error) = pipeline::jdf(jdf, options)
     {
         eprintln!("error: jdf: {error}");
         return ExitCode::FAILURE;

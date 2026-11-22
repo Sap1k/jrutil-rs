@@ -148,35 +148,57 @@ fn policy<T: for<'de> Deserialize<'de>>(name: &str) -> T {
     toml::from_str(text).unwrap_or_else(|error| panic!("policy/{name}: {error}"))
 }
 
+/// How a build runs; nothing here changes what it writes.
+#[derive(Clone, Copy, Debug)]
+pub struct RunOptions {
+    /// Whether the caches the specification names are read and written.
+    pub use_cache: bool,
+    /// Whether each finished stage is also reported as a `JRUTIL_PROGRESS` line, the form
+    /// Oběhy's build reporter reads.
+    pub progress_events: bool,
+}
+
+/// The prefix of a machine-readable progress line.
+const PROGRESS_PREFIX: &str = "JRUTIL_PROGRESS ";
+
 /// Reports each stage's wall time on stderr as it finishes.
 struct Stages {
     package: &'static str,
+    events: bool,
     started: Instant,
 }
 
 impl Stages {
-    fn new(package: &'static str) -> Self {
+    fn new(package: &'static str, options: &RunOptions) -> Self {
         Self {
             package,
+            events: options.progress_events,
             started: Instant::now(),
         }
     }
 
     fn done(&mut self, stage: &str) {
-        eprintln!(
-            "[{}] {stage}: {:.1} s",
-            self.package,
-            self.started.elapsed().as_secs_f64()
-        );
+        let seconds = self.started.elapsed().as_secs_f64();
+        eprintln!("[{}] {stage}: {seconds:.1} s", self.package);
+        if self.events {
+            let event = serde_json::json!({
+                "event": "phase",
+                "stage": self.package,
+                "name": stage,
+                "state": "completed",
+                "seconds": (seconds * 10.0).round() / 10.0,
+            });
+            eprintln!("{PROGRESS_PREFIX}{event}");
+        }
         self.started = Instant::now();
     }
 }
 
 /// The rail package: compile, locate the railway points, connect replacement buses to their
 /// trains, order the route stops, publish.
-/// `use_cache`: whether the shapes cache the specification names is used.
-pub fn czptt(spec: &CzpttSpec, use_cache: bool) -> Result<(), BuildError> {
-    let mut stages = Stages::new("czptt");
+pub fn czptt(spec: &CzpttSpec, options: &RunOptions) -> Result<(), BuildError> {
+    let use_cache = options.use_cache;
+    let mut stages = Stages::new("czptt", options);
     let mut diagnostics = Diagnostics::new();
     let precedence: Precedence = policy("precedence.toml");
 
@@ -286,9 +308,9 @@ pub fn czptt(spec: &CzpttSpec, use_cache: bool) -> Result<(), BuildError> {
 /// The road package: admit each batch and match its stops, merge the batches, apply the
 /// international filter, assemble the timetable, present the routes, order the route stops,
 /// publish.
-/// `use_cache`: whether the routing cache the specification names is read and written.
-pub fn jdf(spec: &JdfSpec, use_cache: bool) -> Result<(), BuildError> {
-    let mut stages = Stages::new("jdf");
+pub fn jdf(spec: &JdfSpec, options: &RunOptions) -> Result<(), BuildError> {
+    let use_cache = options.use_cache;
+    let mut stages = Stages::new("jdf", options);
     let mut diagnostics = Diagnostics::new();
     let precedence: Precedence = policy("precedence.toml");
 
@@ -503,7 +525,13 @@ pub fn jdf(spec: &JdfSpec, use_cache: bool) -> Result<(), BuildError> {
 
     let route_shapes = match &spec.shapes {
         Some(shapes_spec) => {
-            let summary = route_shapes(&mut timetable, shapes_spec, &precedence, &mut diagnostics)?;
+            let summary = route_shapes(
+                &mut timetable,
+                shapes_spec,
+                use_cache,
+                &precedence,
+                &mut diagnostics,
+            )?;
             stages.done("route shapes");
             Some(summary)
         }

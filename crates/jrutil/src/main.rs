@@ -37,6 +37,9 @@ enum Command {
         /// Neither read nor write any cache.
         #[arg(long)]
         no_cache: bool,
+        /// Also report each finished stage as a `JRUTIL_PROGRESS {json}` line on stderr.
+        #[arg(long)]
+        progress_events: bool,
     },
     /// Check a production package against the serving and production contracts.
     Validate {
@@ -64,7 +67,17 @@ enum Command {
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
-        Command::Build { spec, no_cache } => commands::build::run(&spec, !no_cache),
+        Command::Build {
+            spec,
+            no_cache,
+            progress_events,
+        } => commands::build::run(
+            &spec,
+            &pipeline::RunOptions {
+                use_cache: !no_cache,
+                progress_events,
+            },
+        ),
         Command::Validate { package } => commands::validate::run(&package),
         Command::Compare {
             reference,

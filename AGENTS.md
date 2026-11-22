@@ -27,11 +27,11 @@ into the `jrutil-production` packages Oběhy serves. It replaces the F# JrUtil
 6. **IDs are opaque.** Public IDs are built only in `jr_model::identity` and are never parsed.
    Whatever a consumer needs from an ID is carried as a field next to it.
 7. **Deterministic.** Output is in sorted or source order, never hash order. Results do not depend
-   on the thread count or on the stage cache; tests assert both. `HashMap` is fine for lookups
+   on the thread count or on a cache; tests assert both. `HashMap` is fine for lookups
    that are never iterated into output; anything iterated is a `BTreeMap` or a sorted `Vec`.
 8. **In memory, flat, parallel.** Dense integer handles, vectors, `DateSet` bitsets, rayon. No
    spill files, no memory budgets. If a structure does not fit, redesign it.
-9. **The cache is an optimisation.** A build with the stage cache disabled is byte-identical.
+9. **The cache is an optimisation.** A build with `--no-cache` is byte-identical.
 10. **Parity is explained, not approximate.** Until a package has switched, its output is compared
     with F# on the golden subset (`jrutil compare --expect parity/<package>.toml`). Every
     difference belongs to a ledger category with a reason. F# bugs are fixed and ledgered, never

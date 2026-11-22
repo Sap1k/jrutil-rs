@@ -94,7 +94,18 @@ line 444 gain authority because the base has no trip-less routes; replaced coord
 routing graph of the national demand extract, 28 s for the estimator. The graph (16.6 M
 vertices, 32.9 M edges) holds about 1.5 GB and is freed when the last context is routed: the
 build peaks at 2.6 GB while the graph is built, stays at 2.0 GB while routing and at 1.4 GB
-after it. `<root>/jdf/build-full.toml` (posts, then the overlay, then the filtered feed: what
+after it.
+
+With the routing cache (`[jdf.posts] cache`) a warm build spends 11 s in the estimator instead
+of 39 s, and its package, evidence pack and reports are byte-identical to a `--no-cache`
+build. The check that the per-region validity is exact: a cache written on the demand extract,
+used for a build on `jdf-transit-routing-base.osm.pbf` (another extract of the same country,
+with other edge numbers), reuses 19,933 of 20,021 contexts and routes 88 again, and that build
+is byte-identical to a `--no-cache` build on the base extract. The cache file is 55 MB.
+
+`<root>/jdf/build-exports.toml` builds the base package from the batches packed as two national
+exports (`inputs-exports/JDF_VLD.zip`, `JDF_drahy.zip`, `[[jdf.exports]]`): byte-identical to the
+build from the batch directory. `<root>/jdf/build-full.toml` (posts, then the overlay, then the filtered feed: what
 production publishes) builds in 68 s. F#: 85 s `fix-jdf`, 34 s `merge-jdf`, 206 s `jdf-to-bundle`
 with posts, 234 s overlay.
 

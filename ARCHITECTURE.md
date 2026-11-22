@@ -53,7 +53,7 @@ platforms, connections from the infrastructure manager's list, a foreign rail ov
 | `jr-posts` | post estimator: capture → evidence store → policy and scorer → edits | no |
 | `jr-overlay` | GTFS overlay engine: source profiles, matching, projection → edits | no |
 | `jr-publish` | serving relations, GTFS projection, manifest, diagnostics, `validate`, `compare` | yes |
-| `jrutil` | CLI, build spec, pipeline order, stage cache, progress, the shapes companion process | yes |
+| `jrutil` | CLI, build spec, pipeline order, cache files, progress, the shapes companion process | yes |
 
 ## The model
 
@@ -95,12 +95,28 @@ makes it necessary, thresholds in `policy/*.toml`, a diagnostic code, a test nam
 and a row in `docs/rules/<area>.md`. The ledger also records, for every rule the F# JrUtil had,
 whether it was ported, replaced or dropped, and why.
 
-## The stage cache
+## Caches
 
-A stage's output is stored under the hash of its inputs' hashes, its policy and its version.
-The grain that pays: one parsed and normalised JDF batch, one CZPTT source object, one overlay
-source snapshot, the OSM facts, one routed post context. The cache changes nothing but time:
-with it disabled the output is byte-identical, and a test says so.
+A cache changes nothing but time: `jrutil build --no-cache` writes the same bytes, and the
+golden runs say so (`docs/golden.md`). One is built where a measurement shows it pays.
+
+**Routed post contexts** (`[jdf.posts] cache`). Routing is the longest stage of the road build,
+and the OSM extract changes every day, so validity is per region, not per file. Every routing
+algorithm reads the graph through a reader that notes where in the plane it read
+(`jr_geo::routing::reader`); the graph is cut into tiles, each with a digest of the edges that
+touch it (`region`); a stored result is reused when the digest of the tiles it read is the same
+on the current graph (`cache`). The file's name carries a hash of the router's sources (taken
+at build time, so nobody has to remember a version bump) and of the routing policy. The
+graph is still built on every run: the digests need it.
+
+**The shapes companion's results** (`[*.shapes] cache`) are the companion's own, keyed by
+pattern content.
+
+Not cached, by measurement: a parsed and matched JDF batch, a CZPTT source object, an overlay
+source snapshot. On the golden slice the whole road build without posts takes 17 s and the rail
+build under a second; a batch's stop matching depends on the registry, the catalogues and the
+OSM stops, so any geodata change would invalidate every batch anyway. If the national build
+shows a stage worth caching, it gets one then.
 
 ## Parity
 
