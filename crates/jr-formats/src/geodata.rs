@@ -12,6 +12,7 @@ pub mod filter_rules;
 pub mod gazetteer;
 pub mod registry;
 pub mod route_rules;
+pub mod stop_overrides;
 pub mod synonyms;
 
 /// The 1-based line a CSV record starts on.
