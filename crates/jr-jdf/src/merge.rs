@@ -223,6 +223,11 @@ pub struct Version {
     pub batch: Box<str>,
     /// Its row in the batch's `Linky.txt`.
     pub position: u32,
+    /// One more than the number of versions of its licence that earlier batches brought,
+    /// whether or not they survived (JDF-R239's number). Nothing in the merge reads it; the
+    /// post estimator's context identity names it (POST-R044), and labelled contexts are
+    /// joined on that identity.
+    pub ordinal: u32,
     /// The batch's creation date (R240).
     pub created: Option<Date>,
     /// The `Linky` row as published.

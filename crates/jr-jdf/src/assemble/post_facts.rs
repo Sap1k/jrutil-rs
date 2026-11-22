@@ -5,8 +5,6 @@
 //! textual boarding point. Everything is a handle or a source fact; nothing is to be read out
 //! of an ID.
 
-use std::collections::HashMap;
-
 use jr_model::timetable::Mode;
 use jr_model::{BoardingPointId, Coord, PlaceId, TripId};
 
@@ -80,12 +78,9 @@ pub(super) fn build(
         .collect();
     stops.sort_by_key(|stop| stop.number);
 
-    let mut ordinals: HashMap<&str, i32> = HashMap::new();
     let mut trips = Vec::new();
     for (index, version) in merged.versions.iter().enumerate() {
-        let ordinal = ordinals.entry(&version.route.id).or_insert(0);
-        *ordinal += 1;
-        let distinction = *ordinal;
+        let distinction = version.ordinal as i32;
         for trip in published.versions.get(index).into_iter().flatten() {
             trips.push(TripFacts {
                 trip: trip.handle,

@@ -2377,15 +2377,15 @@ Rules the Rust evaluator and pack reader (`jr_posts::evaluate`, `jr_formats::pos
 - **Diagnostic:** error.
 
 #### POST-R190 — The route distinction of a context
-- **What:** a context's `route_distinction` (and so its context and block IDs) is the ordinal of
-  its line version among the surviving merged versions of the licence, from 1, in merge order
-  (`jr_jdf::assemble::TripFacts::distinction`). F#'s merged JDF numbered every input version of
-  a licence in batch order, versions the merge later dropped included; the Rust merge keeps only
-  the survivors, so the two differ for about half the golden slice's patterns.
-- **Where:** `jr_jdf::assemble::post_facts::build`, `jr_posts::capture`.
-- **Why:** the distinction only keeps versions of one line apart; decisions do not depend on its
-  value. Equal context IDs with F# (training labels join on them, POST-R044) need the merge to
-  carry each version's input ordinal: a field of `jr_jdf::merge::Version` (raised).
+- **What:** a context's `route_distinction` (and so its context and block IDs) is its line
+  version's merge ordinal (`jr_jdf::merge::Version::ordinal`): one more than the number of
+  versions of the licence that earlier batches brought, whether or not they survived. That is
+  the number F#'s merge gave a version (JDF-R239), so context IDs equal F#'s except for the
+  later date ranges of a version F# copied (JDF-R248), which the Rust merge keeps as one version.
+- **Where:** `jr_jdf::merge::assemble::add_batch`, `jr_jdf::assemble::post_facts::build`,
+  `jr_posts::capture`.
+- **Why:** the distinction only keeps versions of one line apart and decisions do not depend on
+  its value, but training labels are joined on the context identity (POST-R044).
 - **Pinned by:** `post_r041_identical_trips_share_their_contexts` (contexts per pattern).
 - **Constants:** none.
 - **Diagnostic:** none.

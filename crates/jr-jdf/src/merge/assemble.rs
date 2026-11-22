@@ -168,6 +168,14 @@ pub(crate) fn add_batch(
     // Versions, by their batch-local key.
     let first = versions.len();
     let mut by_key: HashMap<(Box<str>, u32), usize> = HashMap::new();
+    // R239's number: the versions of the licence merged from earlier batches, plus one.
+    let earlier = |licence: &str| {
+        versions[..first]
+            .iter()
+            .filter(|version| &*version.route.id == licence)
+            .count() as u32
+    };
+    let ordinals: Vec<u32> = routes.iter().map(|route| earlier(&route.id) + 1).collect();
     for (position, route) in routes.into_iter().enumerate() {
         let Some(&agency) = agency_map.get(&(route.agency_id.clone(), route.agency_distinction))
         else {
@@ -183,6 +191,7 @@ pub(crate) fn add_batch(
         versions.push(Version {
             batch: name.clone(),
             position: position as u32,
+            ordinal: ordinals[position],
             created: header.created,
             key: VersionKey {
                 licence: route.id.clone(),
