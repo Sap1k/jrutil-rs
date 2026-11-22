@@ -1892,3 +1892,23 @@ sorting (R236).
 - **Constants:** none.
 - **Diagnostic:** `jdf_attribute_dangling` (warning), once per batch and number, with the count
   of slots.
+
+#### JDF-R284 — Stops and agencies no surviving version uses
+- **What:** after version resolution and bounding (R247–R249), and again after the international
+  filter (R279), merged stops referenced by no surviving version's route stops or calls, and
+  agencies referenced by no surviving version or agency alternation, are dropped; references are
+  renumbered. Registry candidates (R232, R233) are offered only for stops that remain.
+- **Why:** verdict Q20: stops no published trip uses are neither published nor offered for review
+  (F# kept them unless the `regional-adjacent` filter ran, B14).
+- **Constants:** none.
+- **Diagnostic:** `jdf_unused_dropped` (info), one per pruning with the counts.
+
+#### JDF-R285 — Rows with references the batch cannot resolve
+- **What:** a row of a batch relation that names a version (licence and distinction), a trip, a
+  stop or an agency the batch does not have, or a second version or trip with a key already taken
+  in the batch, is dropped.
+- **Why:** F# looked such references up with `.[key]` / `Map.find` and aborted the whole merge
+  (B22-like); the verdicts make unknown references a diagnostic that drops the row.
+- **Constants:** none.
+- **Diagnostic:** `jdf_reference_unknown` (warning), once per batch, relation and missing kind,
+  with the count.

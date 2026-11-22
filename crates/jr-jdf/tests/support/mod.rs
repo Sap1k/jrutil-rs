@@ -232,3 +232,5 @@ pub fn synthetic<'a>(
         }],
     }
 }
+
+pub mod merge;

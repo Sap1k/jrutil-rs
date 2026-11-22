@@ -164,14 +164,75 @@ pub fn running_days(
     policy: &Policy,
     diagnostics: &mut Diagnostics,
 ) -> DateSet {
+    let days = ladder(
+        input,
+        input.valid_from,
+        input.valid_to,
+        horizon,
+        holidays,
+        policy,
+        diagnostics,
+    );
+    if days.is_empty() {
+        diagnostics.push(never_runs(input));
+    }
+    days
+}
+
+/// The running days of a version that won several intervals (JDF-R248): the ladder over each
+/// interval with the interval as the validity (so undated notes default to the interval's start,
+/// as on an F# cut version), united. An empty result is reported once (R267).
+pub fn running_days_in(
+    input: &TripCalendarInput<'_>,
+    intervals: &[(Date, Date)],
+    horizon: Horizon,
+    holidays: &Holidays,
+    policy: &Policy,
+    diagnostics: &mut Diagnostics,
+) -> DateSet {
+    let mut days = DateSet::EMPTY;
+    for &(from, to) in intervals {
+        days = days
+            | ladder(
+                input,
+                from,
+                Some(to),
+                horizon,
+                holidays,
+                policy,
+                diagnostics,
+            );
+    }
+    if days.is_empty() {
+        diagnostics.push(never_runs(input));
+    }
+    days
+}
+
+fn never_runs(input: &TripCalendarInput<'_>) -> Diagnostic {
+    Diagnostic::new(
+        "jdf_trip_never_runs",
+        Severity::Warning,
+        format!("{}/{}", input.subject, input.trip),
+        "the trip has no running day in the horizon",
+    )
+    .rule(R267)
+}
+
+/// R255–R264 over `valid_from ..= valid_to` (open: to the horizon's end).
+fn ladder(
+    input: &TripCalendarInput<'_>,
+    valid_from: Date,
+    valid_to: Option<Date>,
+    horizon: Horizon,
+    holidays: &Holidays,
+    policy: &Policy,
+    diagnostics: &mut Diagnostics,
+) -> DateSet {
     debug_assert_eq!(holidays.horizon(), horizon);
     let subject = || format!("{}/{}", input.subject, input.trip);
     let full = DateSet::full(horizon.days());
-    let validity = DateSet::range(
-        horizon,
-        input.valid_from,
-        input.valid_to.unwrap_or(horizon.end()),
-    );
+    let validity = DateSet::range(horizon, valid_from, valid_to.unwrap_or(horizon.end()));
 
     // R255: the days each kind of row covers, and which kinds the trip has at all.
     let mut cover = [DateSet::EMPTY; KINDS];
@@ -182,7 +243,7 @@ pub fn running_days(
         let Some(&kind) = policy.calendar.note_types.get(code.code()) else {
             continue;
         };
-        let from = note.date_from.unwrap_or(input.valid_from);
+        let from = note.date_from.unwrap_or(valid_from);
         let to = note.date_to.unwrap_or(from);
         if note.date_from.is_none() {
             diagnostics.push(
@@ -241,7 +302,7 @@ pub fn running_days(
     }
 
     let covered = |kind| cover[slot(kind)];
-    let ladder = if has[slot(NoteKind::RunsOnly)] {
+    let days = if has[slot(NoteKind::RunsOnly)] {
         // R256.
         covered(NoteKind::RunsOnly)
     } else {
@@ -259,18 +320,5 @@ pub fn running_days(
         (covered(NoteKind::RunsAlso) - not_running)
             | (by_attributes - not_running - wrong_week - outside_runs_in)
     };
-    let days = ladder & validity;
-
-    if days.is_empty() {
-        diagnostics.push(
-            Diagnostic::new(
-                "jdf_trip_never_runs",
-                Severity::Warning,
-                subject(),
-                "the trip has no running day in the horizon",
-            )
-            .rule(R267),
-        );
-    }
-    days
+    days & validity
 }

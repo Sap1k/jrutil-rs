@@ -216,11 +216,7 @@ pub struct Batch {
 impl Batch {
     /// The fixed code of each attribute number; the first row wins (R025).
     pub fn attribute_codes(&self) -> AttributeCodes<'_> {
-        let mut codes = BTreeMap::new();
-        for attribute in &self.attribute_refs {
-            codes.entry(attribute.id).or_insert(&*attribute.code);
-        }
-        AttributeCodes { codes }
+        AttributeCodes::new(&self.attribute_refs)
     }
 }
 
@@ -231,6 +227,15 @@ pub struct AttributeCodes<'a> {
 }
 
 impl<'a> AttributeCodes<'a> {
+    /// The codes of `Pevnykod` rows; the first row of a number wins (R025).
+    pub fn new(refs: &'a [AttributeRef]) -> Self {
+        let mut codes = BTreeMap::new();
+        for attribute in refs {
+            codes.entry(attribute.id).or_insert(&*attribute.code);
+        }
+        AttributeCodes { codes }
+    }
+
     pub fn get(&self, id: u32) -> Option<&'a str> {
         self.codes.get(&id).copied()
     }

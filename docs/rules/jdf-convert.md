@@ -110,6 +110,18 @@ Further:
 - Bad references (B13, B14) are diagnostics that drop the affected trip or fact, never a crash.
 - B7 cannot occur: an ID is built once.
 - R467 and the other `cz_*` / `source_*` tables are not built.
+- R430: a route none of whose trips runs is not published (F# published 17 such routes on the
+  golden slice), nor are its notes and its integrated-transport membership.
+- R452 with Q14: versions of a line published as one route number their `Udaje` rows
+  independently. A note equal to one already published under its number is published once; a
+  differing one is a further note (`identity::jdf::note_variant`). Note text is trimmed.
+- R453: a typed `Caskody` row without text has shaped the calendar and is nothing to diagnose.
+- R417: the stop's `@` holds for each of its boarding points. Unknown is null, not GTFS's `0`.
+- R466: a key holds for the period its line version is in force (the dates the version won),
+  not for the bounds of the trip's calendar row.
+- R461: a `Navaznosti` target of `0` is absent, not an identifier (B10).
+- SERVING-R046: the relation keeps an operator without a website as null; `agency.txt` gets the
+  feed publisher's URL, which GTFS requires.
 
 ---
 
@@ -2001,3 +2013,16 @@ Proposed `jr-publish` projection `filtered_gtfs(timetable_pre_overlay, rules, re
     from that policy.
 17. **Diagnostics granularity.** One row per dropped enrichment (F#: 547 `filtered_enrichment`
     golden rows) or counts per dropped trip?
+
+---
+
+## 11. Rules added by the rewrite
+
+#### JDF-R478 — A version without a known transport mode
+- **What:** a version whose `Linky` transport mode is empty or not one of the JDF letters (JDF
+  1.10/1.11 only; 1.8/1.9 batches take the default of JDF-R028) is published with the policy's
+  fallback mode (`[modes] fallback`, bus), before the transport-mode rules run.
+- **Why:** F# could not read such a batch at all (the union parse failed and the batch was lost);
+  the reader now keeps the empty field, and a route needs a mode.
+- **Constants:** `jdf_convert.toml` `[modes] fallback = "A"`.
+- **Diagnostic:** `jdf_transport_mode_missing` (warning), per version.

@@ -1,0 +1,29 @@
+# Constants of the JDF merge (crates/jr-jdf/src/merge; docs/rules/jdf-merge.md R207–R254).
+# Every value here belongs to a named rule; the rule IDs are given per section.
+
+[stops]
+# JDF-R217, R220, R221: the distance within which two precisely located spellings may be one
+# stop (also the cell size of the spatial index). registry.py's DISTINCT_STOP_METRES.
+match_distance_m = 75.0
+# JDF-R217: the spatial index's longitude cells are wide enough for this latitude and below.
+grid_max_latitude = 70.0
+# JDF-R217, R219: an alias's suffixes are indexed from this many components.
+min_suffix_components = 2
+# JDF-R221: a fuzzy candidate needs this many tokens on both sides and these similarities.
+fuzzy_min_tokens = 2
+fuzzy_min_levenshtein = 0.90
+fuzzy_min_token_dice = 0.80
+# JDF-R207, R230: registered numbers lie below the base; provisional numbers are
+# base + (hash + k) mod span.
+provisional_base = 1000000000
+provisional_span = 1000000000
+# JDF-R231: two precise locations of one stop farther apart than this are diagnosed.
+location_conflict_m = 1000.0
+
+# JDF-R232–R234: the registry candidates (the contract with registry.py promote).
+[candidates]
+reason_new = "new"
+reason_ambiguous = "ambiguous"
+reason_alias = "alias"
+suggestion_min_similarity = 0.85
+suggestion_max = 3

@@ -1,12 +1,16 @@
 //! The road compiler: JDF batches to a Timetable. No I/O.
 //!
-//! This is the foundation: a batch with its format version's defaults applied ([`batch`]), a
-//! trip's running days ([`calendar`], [`holidays`]) and the international route filter
-//! ([`international`]). Every decision is a named rule of `docs/rules/jdf-read.md` or
-//! `docs/rules/jdf-merge.md`; [`RULES`] lists them.
+//! A batch as read is admitted and given its format version's defaults ([`source`], [`batch`]);
+//! its stops are matched, one batch at a time ([`fix`], handing over a [`fixed::FixedBatch`]);
+//! the fixed batches are merged into stops, operators and line versions, each trip with its
+//! running days ([`merge`], [`calendar`], [`holidays`]), and the international filter is applied
+//! ([`international`]); the merged facts are assembled into the timetable ([`assemble`]). Every
+//! decision is a named rule of `docs/rules/jdf-read.md`, `jdf-merge.md` or `jdf-convert.md`;
+//! [`rules`] lists them.
 //!
 //! See ARCHITECTURE.md.
 
+pub mod assemble;
 pub mod batch;
 pub mod calendar;
 pub mod fix;
@@ -15,11 +19,12 @@ pub mod holidays;
 pub mod international;
 pub mod merge;
 pub mod policy;
+pub mod source;
 
 pub use policy::Policy;
 
-/// Every rule this crate implements.
-pub const RULES: &[jr_model::Rule] = &[
+/// The rules of the batch foundation: version defaults, calendars and the international filter.
+const FOUNDATION: &[jr_model::Rule] = &[
     batch::R025,
     batch::R026,
     batch::R028,
@@ -50,3 +55,17 @@ pub const RULES: &[jr_model::Rule] = &[
     international::R281,
     batch::R283,
 ];
+
+/// Every rule this crate implements, stage by stage.
+pub fn rules() -> impl Iterator<Item = jr_model::Rule> {
+    [
+        source::RULES,
+        FOUNDATION,
+        fix::RULES,
+        merge::RULES,
+        assemble::RULES,
+    ]
+    .into_iter()
+    .flatten()
+    .copied()
+}

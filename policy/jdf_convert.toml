@@ -1,0 +1,152 @@
+# Constants of the JDF assembly into a Timetable (crates/jr-jdf/src/assemble;
+# docs/rules/jdf-convert.md R405–R473). Every value belongs to a named rule, given per section.
+
+# JDF-R469: `jdf-<version>:<yyyymmdd of the reference date>`, the merged export's version.
+[feed]
+source_format_version = "1.11"
+
+# JDF-R426.
+[agencies]
+timezone = "Europe/Prague"
+language = "cs"
+# A website without one of these anywhere in it gets the prefix.
+url_schemes = ["http://", "https://"]
+url_prefix = "http://"
+
+# JDF-R408: a six-digit licence without a preferential LinExt designation is published by its
+# last `licence_suffix` digits, leading zeros removed.
+[public_line]
+licence_digits = 6
+licence_suffix = 3
+
+# JDF-R427, R428, R478: transport-mode letters (Linky / route rules) as model modes, GTFS
+# route types and colours.
+[modes]
+bus = "A"
+# R478: the mode a version without a known transport mode is published with.
+fallback = "A"
+[modes.letters]
+A = "bus"
+E = "tram"
+T = "trolleybus"
+L = "cable"
+M = "metro"
+P = "water"
+
+[route_types]
+# Bus by JDF route type (Linky typ linky).
+bus = { A = 704, B = 704, M = 201, N = 201, P = 201, V = 701, W = 701, Z = 701, D = 202 }
+# Bus of a version with regional cross-border service (F# RegionalInternational).
+bus_cross_border = 701
+# Bus without a known route type (R427).
+bus_default = 701
+# Other modes, by mode letter.
+modes = { E = 900, L = 1701, M = 401, P = 1000, T = 800 }
+
+[colours]
+text = "ffffff"
+bus_default = "0076a3"
+bus_cross_border = "00695c"
+bus_by_route_type = { M = "004f71", N = "004f71", P = "004f71", D = "004f71" }
+# By mode letter: [background, text].
+modes = { E = ["7a0200", "ffffff"], T = ["80166f", "ffffff"], L = ["c8d021", "1c1745"], P = ["00b3cb", "1c1745"] }
+# Metro by upper-cased public line; others the default.
+metro = { A = ["00b274", "ffffff"], B = ["fbaf33", "1c1745"], C = ["d31245", "ffffff"] }
+metro_default = ["1c1745", "ffffff"]
+
+# JDF-R430.
+[routes]
+detour_description = "Výlukový jízdní řád"
+
+# JDF-R437, R438, R444, R417, R462: fixed codes with a fixed meaning.
+[codes]
+wheelchair_trip = ["@", "{"]
+bikes_trip = ["O"]
+wheelchair_stop = "@"
+# R444: in this order, the first present decides the service of a call.
+ask_driver = ["x"]
+phone_agency = ["!", "T"]
+no_pickup = ["(", "$"]
+no_dropoff = [")", "$"]
+# R462: exclusion codes and their restriction groups.
+restrictions = { "§" = "§", A = "A", B = "B", C = "C" }
+# R457: calendar codes (`X`, `+`, any all-digit code) are calendar designations.
+working_days = "X"
+sundays_and_holidays = "+"
+
+# JDF-R457: trip codes as features.
+[trip_features]
+"R" = "reservation_available"
+"#" = "reservation_required"
+"|" = "not_stopping"
+"<" = "diversion"
+"@" = "wheelchair_accessible_vehicle"
+"{" = "partly_wheelchair_accessible_vehicle"
+"%" = "refreshments_on_vehicle"
+"[" = "luggage_transport"
+"O" = "bicycle_transport"
+"x" = "request_stop"
+"(" = "exit_only"
+")" = "boarding_only"
+"T" = "on_request"
+"!" = "conditional"
+"I" = "integrated_transport"
+"s" = "self_service_ticketing"
+"W" = "toilet"
+"w" = "accessible_toilet"
+"~" = "urban_transport_interchange"
+"$" = "border_control_only"
+"}" = "visually_impaired_accessible"
+"t" = "accessibility_terminal"
+"v" = "rail_interchange"
+"b" = "line_interchange"
+"U" = "metro_interchange"
+"S" = "ship_terminal"
+"J" = "airport_nearby"
+"P" = "park_and_ride"
+
+# JDF-R425: stop codes as location features.
+[location_features]
+"@" = "wheelchair_accessible"
+"%" = "refreshments"
+"W" = "toilet"
+"w" = "accessible_toilet"
+"x" = "request_stop"
+"~" = "urban_transport_interchange"
+"$" = "border_control_only"
+"}" = "visually_impaired_accessible"
+"t" = "accessibility_terminal"
+"v" = "rail_interchange"
+"b" = "line_interchange"
+"U" = "metro_interchange"
+"S" = "ship_terminal"
+"J" = "airport_nearby"
+"P" = "park_and_ride"
+
+# JDF-R442: a backwards clock step is a midnight only when the implied gap is at most this.
+[times]
+max_midnight_gap_minutes = 720
+
+# JDF-R452–R454: the note kinds' words in note IDs, and the Caskody type names (R453).
+[notes]
+route_kind = "route"
+trip_kind = "trip"
+reservation_kind = "reservation"
+[notes.note_types]
+"1" = "service"
+"2" = "service_also"
+"3" = "service_only"
+"4" = "no_service"
+"5" = "odd_weeks"
+"6" = "even_weeks"
+"7" = "odd_weeks_from_to"
+"8" = "even_weeks_from_to"
+
+# JDF-R460: Navaznosti kinds.
+[claims]
+waits_for = "m"
+connects_to = "M"
+
+# JDF-R466: keys for licences of at most this many ASCII digits, zero-padded to it.
+[keys]
+licence_digits = 6

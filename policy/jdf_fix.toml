@@ -1,0 +1,131 @@
+# Constants of road stop matching (crates/jr-jdf/src/fix.rs, jr_jdf::fix::Policy). Rule IDs are
+# those of docs/rules/jdf-read.md; every value belongs to the rule named above it. The name
+# profiles and the town-name table are data/names/road_names.toml, the synonym table
+# data/names/stop_synonyms.txt.
+
+# The country a stop or catalogue row is in when nothing else says so: the okres of R011 and
+# R036 implies it, R044, R053 and R061–R063 treat it as the country with okresy, R073 checks it.
+home_country = "CZ"
+
+# JDF-R006, R007: catalogue rows. A catalogue whose path (relative to the catalogue directory,
+# `/` separators) is listed is a reviewed correction: its positions are `Gapfill`. Every
+# catalogue is a checked source for R047 and R070, as in F#.
+[catalogues]
+gapfill = ["gapfill.csv"]
+source_prefix = "external:"
+
+# JDF-R009–R013: OSM nodes.
+[osm]
+# R009: a node with one of these keys is not a stop.
+excluded_keys = ["train"]
+# R009: a node with the first key must also have the second (B9 kept: verdict Q15).
+requires = [["railway", "tram"]]
+# R009: a node is a stop when one of these tags has one of the values (case-sensitive).
+eligible = [
+    { key = "highway", values = ["bus_stop"] },
+    { key = "public_transport", values = ["platform", "pole", "station"] },
+    { key = "railway", values = ["tram_stop"] },
+    { key = "amenity", values = ["bus_station"] },
+]
+# R010: the name is the first of these tags present; the full name is `full_name_tag`.
+name_tags = ["name", "name:cs"]
+full_name_tag = "official_name"
+# R012: the joiner of the municipality name and the node name.
+name_joiner = ","
+source_prefix = "osm:node:"
+
+# R013: what a node says about modes and lifecycle, for the post estimator.
+[osm.post_evidence]
+affirmative = ["yes", "designated", "official"]
+negative = ["no"]
+lifecycle_keys = ["abandoned", "disused", "construction", "proposed", "temporary"]
+lifecycle_tag = "lifecycle"
+active = "active"
+audit_keys = [
+    "highway", "public_transport", "railway", "amenity", "bus", "psv", "tram", "trolleybus",
+    "access", "vehicle", "motor_vehicle", "abandoned", "disused", "construction", "proposed",
+    "temporary", "local_ref",
+]
+[[osm.post_evidence.modes]]
+mode = "road"
+tags = [{ key = "highway", values = ["bus_stop"] }, { key = "amenity", values = ["bus_station"] }]
+access_keys = ["bus", "psv"]
+[[osm.post_evidence.modes]]
+mode = "tram"
+tags = [{ key = "railway", values = ["tram_stop"] }]
+access_keys = ["tram"]
+
+# JDF-R033.
+[batch]
+min_called_stops = 2
+
+# JDF-R043–R052.
+[matching]
+# R045, verdict Q9: okres codes compared (and looked up in the okres polygons) as another.
+okres_aliases = { OL = "OC" }
+# R046: okresy closer than this are adjacent; a candidate from an adjacent okres must lie this
+# close to the expected okres's boundary.
+okres_adjacency_m = 100.0
+okres_border_tolerance_m = 1000.0
+# R048: a candidate group must lie within this radius of its centroid.
+max_group_radius_m = 1000.0
+# R052: slack added to the kilometre difference, in kilometres.
+secondary_km_tolerance = 1.0
+
+# Verdict Q8 (R043, R053): JDF country codes and the ISO alpha-2 codes they stand for. Countries
+# compare through this table; a country taken from the European gazetteer (ISO) is written as
+# its JDF code.
+[countries]
+CZ = "CZ"
+D = "DE"
+A = "AT"
+SK = "SK"
+PL = "PL"
+UA = "UA"
+H = "HU"
+
+# JDF-R056–R060: MHD naming.
+[mhd]
+# R056: a town needs at least this many supporting stops.
+min_supporting_stops = 2
+# R057: town groups; a town of a group counts as its first.
+town_groups = [["Ústí nad Labem", "Ústí n.L.", "Trmice", "Telnice", "Petrovice,Krásný Les"]]
+# R058: the route name's town, the F# regex `MHD ([^:]*) linka|MHD ([^ :]*)|([^,:-]*) *[,:-]`:
+# after `prefix` up to the last `suffix` before a `:`, or after `prefix` up to a space or `:`,
+# or the text before the first delimiter.
+route_town_prefix = "MHD "
+route_town_suffix = " linka"
+route_town_delimiters = [",", ":", "-"]
+route_name_bonus = 2
+# R059: a town-only name with more parts than this is diagnosed.
+max_name_parts = 3
+# R060: the MHD set needs at least this many more matched stops.
+min_match_gain = 2
+
+# JDF-R063: slack added to the kilometre difference, in kilometres.
+[geography]
+town_km_tolerance = 1.0
+
+# JDF-R066: candidates within this distance of the selected group's centroid.
+[posts]
+candidate_radius_m = 1000.0
+
+# JDF-R068–R070.
+[plausibility]
+# R068: a time this many minutes before the previous one is on the next day.
+rollover_backstep_min = 720.0
+day_min = 1440.0
+# R069: consecutive matches are plausible within slack + elapsed time × speed.
+slack_m = 2000.0
+speed_kmh = 150.0
+
+# JDF-R077 (CZPTT-R100 formulation): past the last anchor, a stop is placed this far north per
+# call.
+[estimate]
+route_end_offset_m_per_call = 300.0
+metres_per_degree_latitude = 111320.0
+
+# JDF-R072: consecutive matches farther apart than (|Δkm| + tolerance) × factor are reported.
+[diagnostics]
+km_check_tolerance_km = 4.0
+km_check_factor = 2.0
