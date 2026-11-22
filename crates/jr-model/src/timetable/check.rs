@@ -11,7 +11,9 @@ use crate::geo::Coord;
 use crate::handle::Handle;
 use crate::identity::{Feed, PublicId};
 use crate::time::ServiceTime;
-use crate::timetable::{BoardingPointKind, Entity, LocationRef, Position, Scope, Timetable};
+use crate::timetable::{
+    BoardingPointKind, Entity, LocationRef, Position, RestrictionScope, Scope, Timetable,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Violation {
@@ -247,6 +249,45 @@ impl Checker<'_> {
             if !known || assignment.note.is_some_and(|note| !t.notes.contains(note)) {
                 self.report(
                     format!("assignment #{index}"),
+                    "refers to an unknown entity",
+                );
+            }
+        }
+        let call_exists = |trip, sequence: i32| {
+            t.trips
+                .get(trip)
+                .is_some_and(|row| row.calls.iter().any(|call| call.sequence == sequence))
+        };
+        for (index, claim) in t.connection_claims.iter().enumerate() {
+            let known = call_exists(claim.origin_trip, claim.origin_sequence)
+                && claim
+                    .dates
+                    .is_none_or(|dates| dates.index() < t.services.len())
+                && claim
+                    .target_route
+                    .is_none_or(|route| t.routes.contains(route))
+                && claim.target_trip.is_none_or(|trip| t.trips.contains(trip))
+                && location(claim.target_location);
+            if !known {
+                self.report(
+                    format!("connection claim #{index}"),
+                    "refers to an unknown entity",
+                );
+            }
+        }
+        for (index, restriction) in t.restrictions.iter().enumerate() {
+            let known = match &restriction.scope {
+                RestrictionScope::RouteStop { route, calls } => {
+                    t.routes.contains(*route)
+                        && calls
+                            .iter()
+                            .all(|(trip, sequence)| call_exists(*trip, *sequence))
+                }
+                RestrictionScope::Call { trip, sequence } => call_exists(*trip, *sequence),
+            };
+            if !known {
+                self.report(
+                    format!("restriction #{index}"),
                     "refers to an unknown entity",
                 );
             }

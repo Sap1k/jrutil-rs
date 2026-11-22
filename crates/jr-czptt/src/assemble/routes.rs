@@ -139,6 +139,7 @@ pub(crate) fn agency(
         language: Some(rules.language.clone()),
         phone: None,
         fare_url: None,
+        registration: None,
         email: None,
     }
 }

@@ -7,18 +7,18 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::handle::{NoteId, RouteId, TripId};
+use crate::handle::{NoteId, RouteId, ServiceId, TripId};
 use crate::identity::PublicId;
 use crate::time::Date;
 use crate::timetable::LocationRef;
 
 /// An enum whose variants are published under a fixed snake_case name.
 macro_rules! coded {
-    ($(#[$doc:meta])* $name:ident { $($variant:ident => $text:literal),+ $(,)? }) => {
+    ($(#[$doc:meta])* $name:ident { $($(#[$about:meta])* $variant:ident => $text:literal),+ $(,)? }) => {
         $(#[$doc])*
         #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
         pub enum $name {
-            $(#[serde(rename = $text)] $variant),+
+            $($(#[$about])* #[serde(rename = $text)] $variant),+
         }
 
         impl $name {
@@ -152,4 +152,99 @@ pub struct Assignment {
     pub source_code: Option<Box<str>>,
     pub note: Option<NoteId>,
     pub source_object: Option<Box<str>>,
+}
+
+coded!(
+    /// The contract's `connection_direction`.
+    ClaimDirection {
+        /// This trip waits for the other (JDF `m`).
+        WaitsFor => "waits_for",
+        /// The other trip continues from this one (JDF `M`).
+        ConnectsTo => "connects_to",
+    }
+);
+
+coded!(
+    /// How a claim's target was found (`connection_derivation`).
+    ClaimDerivation {
+        None => "none",
+        /// The source's own target columns.
+        Structured => "structured",
+        /// Parsed from the note form the specification defines.
+        SpecNote => "spec_note",
+    }
+);
+
+coded!(
+    /// How far a claim's target is resolved (`connection_resolution`).
+    ClaimResolution {
+        Unresolved => "unresolved",
+        /// To a route and stop, not to one trip.
+        Pattern => "pattern",
+        /// To one trip.
+        Resolved => "resolved",
+    }
+);
+
+/// A source's claim that a trip connects with another service at one of its calls. Kept at
+/// the specificity the source gives: the `target_source_*` fields are the source's own
+/// identifiers, verbatim, and the resolved targets are filled only when resolution is certain.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConnectionClaim {
+    pub direction: ClaimDirection,
+    pub origin_trip: TripId,
+    /// The published sequence of the origin call.
+    pub origin_sequence: i32,
+    /// The days the claim holds, when narrower than the trip's.
+    pub dates: Option<ServiceId>,
+    pub target_source_route: Option<Box<str>>,
+    pub target_source_trip: Option<Box<str>>,
+    pub target_source_stop: Option<Box<str>>,
+    pub target_source_post: Option<Box<str>>,
+    pub target_source_end_stop: Option<Box<str>>,
+    pub target_source_end_post: Option<Box<str>>,
+    pub wait_minutes: Option<i32>,
+    pub note: Option<Box<str>>,
+    pub target_public_line: Option<Box<str>>,
+    pub target_destination_text: Option<Box<str>>,
+    pub derivation: ClaimDerivation,
+    pub resolution: ClaimResolution,
+    pub target_route: Option<RouteId>,
+    pub target_trip: Option<TripId>,
+    pub target_location: Option<LocationRef>,
+    pub source_object: Box<str>,
+}
+
+coded!(
+    /// The contract's `restriction_group`: calls of one trip sharing a group may not be used as
+    /// both the boarding and the alighting end of a journey.
+    RestrictionGroup {
+        Section => "§",
+        A => "A",
+        B => "B",
+        C => "C",
+    }
+);
+
+/// What a travel restriction is stated for.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RestrictionScope {
+    /// A stop of a line's stop list: every listed call (trip, published sequence) of the
+    /// route's trips at that stop.
+    RouteStop {
+        route: RouteId,
+        calls: Box<[(TripId, i32)]>,
+    },
+    /// One call of one trip.
+    Call { trip: TripId, sequence: i32 },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Restriction {
+    pub group: RestrictionGroup,
+    pub scope: RestrictionScope,
+    /// The source's own number of the route stop the restriction is written on.
+    pub source_route_stop: Box<str>,
+    pub source_object: Box<str>,
 }

@@ -22,8 +22,9 @@ use crate::handle::{
     Sym, TripId,
 };
 use crate::timetable::{
-    Agency, Assignment, BoardingPoint, CallKey, CoordSource, Note, Place, Position, Precision,
-    Route, RouteStop, Shape, SourceKey, Target, Timetable, Transfer, Trip, TripShape, Violation,
+    Agency, Assignment, BoardingPoint, CallKey, ConnectionClaim, CoordSource, Note, Place,
+    Position, Precision, Restriction, Route, RouteStop, Shape, SourceKey, Target, Timetable,
+    Transfer, Trip, TripShape, Violation,
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -37,6 +38,8 @@ pub enum Edit {
     AddShape(Shape),
     AddNote(Note),
     AddAssignment(Assignment),
+    AddConnectionClaim(ConnectionClaim),
+    AddRestriction(Restriction),
     /// Subject to [`Precedence`]: a weaker source does not replace a stronger one.
     SetPlacePosition {
         place: PlaceId,
@@ -399,6 +402,14 @@ fn apply_one(
         Edit::AddNote(note) => Target::Note(timetable.notes.push(note)),
         Edit::AddAssignment(assignment) => {
             timetable.assignments.push(assignment);
+            Target::Table
+        }
+        Edit::AddConnectionClaim(claim) => {
+            timetable.connection_claims.push(claim);
+            Target::Table
+        }
+        Edit::AddRestriction(restriction) => {
+            timetable.restrictions.push(restriction);
             Target::Table
         }
         Edit::SetPlacePosition { place, position } => {

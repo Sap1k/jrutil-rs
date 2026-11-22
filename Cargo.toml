@@ -46,6 +46,8 @@ rayon = "1.12"
 # CZPTT XML messages, the gzip change objects and OSM PBF blobs (jr-formats).
 quick-xml = "0.42"
 flate2 = { version = "1.1", default-features = false, features = ["zlib-rs"] }
+# JDF text is CP1250 (jr-formats).
+encoding_rs = "0.8"
 # Parity ledger filters (jr-publish compare).
 regex = "1.13"
 

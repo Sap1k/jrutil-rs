@@ -41,6 +41,7 @@ impl Fixture {
             language: None,
             phone: None,
             fare_url: None,
+            registration: None,
             email: None,
         });
         let mut route = |line: &str, mode: Mode| {

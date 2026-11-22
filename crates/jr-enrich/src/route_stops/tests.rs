@@ -30,6 +30,7 @@ impl Fixture {
             language: None,
             phone: None,
             fare_url: None,
+            registration: None,
             email: None,
         });
         let route = t.routes.push(Route {

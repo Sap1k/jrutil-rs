@@ -63,6 +63,56 @@ Conventions used below:
 
 ---
 
+## Architect's verdicts
+
+**These override the "Proposed verdict" lines below.** Where a rule is not listed, its proposed
+verdict stands. Rule IDs in the Rust code are the IDs of this file; the calendar rules are owned
+by `jdf-merge.md` (R255–R268), and R409–R414 here refer to them.
+
+The road port is a parity port: what F# publishes is reproduced, crashes become diagnostics, and
+the semantic gaps this inventory found are **recorded, not closed**. Closing one (request stops
+from the line's route stops, typed `Caskody` designations, line-level reservation notes,
+alternate operators) is a deliberate change of what Oběhy serves, to be made on its own after the
+switch.
+
+| Q | Decision |
+|---|---|
+| 1 | Calendars: `jdf-merge.md`. |
+| 2 | Port F# (undated odd/even weeks). |
+| 3 | Port F#: pickup and drop-off come from the stop's and the call's own codes only. B1 and B2 stand as limitations. |
+| 4 | Port: the office phone number. |
+| 5 | As decided in `jdf-merge.md` (Q9, Q10): no chunks; a hash of the published validity for a second version starting the same day; `:pN` for side-by-side versions. Route groups keep `jdf:route:<line>` for the group holding the line's earliest-starting version, `…:detour` for detours, and eight hex characters of the group's semantics for any other group, as today. |
+| 6 | Port (trip number parity decides direction). |
+| 7 | Keep the trip short name. |
+| 8 | Keep the 0-based ordered index as the call sequence. |
+| 9 | The presentation pass runs twice, as in F#: after the road compiler (so the filtered feed and the overlay see presented routes) and again after the overlay. |
+| 10 | The JDF time windows are not carried. |
+| 11 | Typed `Caskody` designations are not published (port). Recorded as a limitation. |
+| 12 | `Mistenky` rows for trip `0` are dropped with a diagnostic (port). Recorded as a limitation. |
+| 13 | A claim on a call that is not served is dropped with a diagnostic (port). No `origin_sequence = 0` fallback: a claim whose origin cannot be found is dropped with a diagnostic too (serving question 18). |
+| 14 | Note and claim IDs are built from the trip or route ID and the source row's own number, not from a merge-assigned distinction. They are generated IDs and are compared by content. |
+| 15 | Alternate operators are not published. The filtered feed reads them from the road compiler's own facts. |
+| 16 | Yes: the manifest records the policy the filter ran with. |
+| 17 | One diagnostic per dropped fact, with a code; the package summary counts them. |
+
+Model (section 5): the timetable gained connection claims, travel restrictions and the
+operator's registration number (IČO). Everything else in the list is either a source key
+(`cis:line`, `cis:line_trip`), stays inside the road compiler (route versions, the route stop a
+call came from, alternate operators, integrated-system details), or is not carried. A travel
+restriction written on a line's route stop is stored with the calls it reaches, so the published
+slot comes from the calls and nothing has to carry the source's route-stop key; a restriction on
+a trip's call points at that call (fixes serving question 9).
+
+Further:
+
+- No ID is parsed back (section 4): presentation rules read the registration number and the
+  `cis:line` key.
+- Bad references (B13, B14) are diagnostics that drop the affected trip or fact, never a crash.
+- B7 cannot occur: an ID is built once.
+- R467 and the other `cz_*` / `source_*` tables are not built.
+
+---
+
 ## 1. Data flow
 
 The command `jdf-to-bundle` (`ConvertCommands.jdfToBundle`) builds `BundleOptions` from the

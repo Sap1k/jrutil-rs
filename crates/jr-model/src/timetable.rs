@@ -24,7 +24,10 @@ mod check;
 mod semantics;
 
 pub use check::Violation;
-pub use semantics::{Assignment, AssignmentKind, Feature, Note, NoteKind, Scope};
+pub use semantics::{
+    Assignment, AssignmentKind, ClaimDerivation, ClaimDirection, ClaimResolution, ConnectionClaim,
+    Feature, Note, NoteKind, Restriction, RestrictionGroup, RestrictionScope, Scope,
+};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Timetable {
@@ -43,6 +46,8 @@ pub struct Timetable {
     pub route_stops: Table<RouteStopId, RouteStop>,
     pub notes: Table<NoteId, Note>,
     pub assignments: Vec<Assignment>,
+    pub connection_claims: Vec<ConnectionClaim>,
+    pub restrictions: Vec<Restriction>,
     pub transfers: Vec<Transfer>,
     pub keys: Vec<SourceKey>,
     pub call_keys: Vec<CallKey>,
@@ -70,6 +75,8 @@ impl Timetable {
             route_stops: Table::new(),
             notes: Table::new(),
             assignments: Vec::new(),
+            connection_claims: Vec::new(),
+            restrictions: Vec::new(),
             transfers: Vec::new(),
             keys: Vec::new(),
             call_keys: Vec::new(),
@@ -211,6 +218,9 @@ pub struct Agency {
     pub phone: Option<Box<str>>,
     pub fare_url: Option<Box<str>>,
     pub email: Option<Box<str>>,
+    /// The operator's registration number where the source identifies operators by one (the
+    /// Czech IČO), as written. Reviewed rules name operators by it.
+    pub registration: Option<Box<str>>,
 }
 
 /// A stop place, a station or a railway operational point.

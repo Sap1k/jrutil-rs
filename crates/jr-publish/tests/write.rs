@@ -145,6 +145,7 @@ fn fixture() -> Fixture {
         language: Some("cs".into()),
         phone: None,
         fare_url: None,
+        registration: None,
         email: None,
     });
     let exact = |lon, lat| Some(Position::exact(Coord::new(lon, lat), CoordSource::Sr70));

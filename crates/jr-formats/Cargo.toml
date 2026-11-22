@@ -17,6 +17,7 @@ zip.workspace = true
 csv.workspace = true
 quick-xml.workspace = true
 flate2.workspace = true
+encoding_rs.workspace = true
 
 [lints]
 workspace = true
