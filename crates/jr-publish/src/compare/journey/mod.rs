@@ -9,11 +9,22 @@
 //! 3. Of what is left, an A and a B trip are a near pair when they have the same `route_id`,
 //!    the same service dates, as many calls and the same first call (location and scheduled
 //!    departure), and neither has another candidate under that key.
-//! 4. The rest are unpaired, described so that a person can find the journey.
+//! 4. Of what is still left, an A and a B trip pair by dates when they have the same
+//!    `route_id`, as many calls and the same first call, at least one service date in common,
+//!    and each is the other's best partner: among A's candidates under that key B has strictly
+//!    the most dates in common with A, and among B's candidates A has strictly the most in
+//!    common with B. A tie on either side pairs neither. (Step 3 runs first, so a candidate
+//!    with equal dates is taken before this step sees it.)
+//! 5. The rest are unpaired, described so that a person can find the journey.
+//!
+//! Pairs from steps 3 and 4 are compared like pairs by ID: a date difference is
+//! `trip.changed.service_id`, other columns and calls as usual.
 //!
 //! The pairs whose IDs differ rename A's trip IDs to B's wherever a column names a trip
 //! (`Pair::renamed`), so every relation compares through the pairing. Only the trips unpaired
 //! by ID are ever hashed by content.
+
+mod near;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
@@ -58,6 +69,7 @@ pub struct TripPairing {
     pub by_id: u64,
     pub by_content: u64,
     pub near: u64,
+    pub by_dates: u64,
     /// Left unpaired in A and in B.
     pub unpaired: [u64; 2],
 }
@@ -255,26 +267,38 @@ fn pair(input: &Input) -> Journeys {
     let matching = match_rows(&content[0], &content[1], same_content);
     drop(content);
 
-    // 3. Near pairs.
+    // 3. Near pairs, 4. pairs by dates, each over what the steps before left.
     let left = [matching.missing, matching.extra];
-    let near = near_pairs(input, &sides, &calls, &left);
+    let near = near::near_pairs(
+        input,
+        &near::Left {
+            sides: &sides,
+            calls: &calls,
+            trips: &left,
+        },
+    );
+    let left = without(left, &near);
+    let by_dates = near::date_pairs(
+        input,
+        &near::Left {
+            sides: &sides,
+            calls: &calls,
+            trips: &left,
+        },
+    );
+    let left = without(left, &by_dates);
 
-    // 4. What is left.
+    // 5. What is left.
     let id = |side: usize, trip: u32| input.ids[side].get(sides[side][trip as usize] as usize);
     let mut renames = Renames::new();
-    for &(ta, tb) in matching.pairs.iter().chain(&near) {
+    for &(ta, tb) in matching.pairs.iter().chain(&near).chain(&by_dates) {
         if let (Some(a), Some(b)) = (id(0, ta), id(1, tb)) {
             renames.insert(a.into(), b.into());
         }
     }
-    let near_sides: [HashSet<u32>; 2] = [
-        near.iter().map(|pair| pair.0).collect(),
-        near.iter().map(|pair| pair.1).collect(),
-    ];
     let unpaired = [0, 1].map(|side| {
         left[side]
             .iter()
-            .filter(|trip| !near_sides[side].contains(trip))
             .map(|&trip| {
                 let row = sides[side][trip as usize];
                 let text = describe(input, side, row, calls[side].of(trip as usize));
@@ -286,6 +310,7 @@ fn pair(input: &Input) -> Journeys {
         by_id,
         by_content: matching.pairs.len() as u64,
         near: near.len() as u64,
+        by_dates: by_dates.len() as u64,
         unpaired: [unpaired[0].len() as u64, unpaired[1].len() as u64],
     };
     Journeys {
@@ -293,6 +318,21 @@ fn pair(input: &Input) -> Journeys {
         unpaired,
         counts,
     }
+}
+
+/// Each side's trips without those `pairs` took.
+fn without(trips: [Vec<u32>; 2], pairs: &[(u32, u32)]) -> [Vec<u32>; 2] {
+    let taken: [HashSet<u32>; 2] = [
+        pairs.iter().map(|pair| pair.0).collect(),
+        pairs.iter().map(|pair| pair.1).collect(),
+    ];
+    let [a, b] = trips;
+    [(a, 0), (b, 1)].map(|(trips, side)| {
+        trips
+            .into_iter()
+            .filter(|trip| !taken[side].contains(trip))
+            .collect()
+    })
 }
 
 /// The `trip_call` rows of the given trips (trip rows), grouped by trip in `sequence` order.
@@ -352,96 +392,6 @@ fn hashers<'c>(columns: &'c Columns, side: usize) -> Vec<CellHasher<'c>> {
 fn column<'c, 'a>(columns: &'c Columns<'a>, name: &str) -> Option<&'c Pair<'a>> {
     let at = columns.names.iter().position(|known| *known == name)?;
     Some(&columns.pairs[at])
-}
-
-/// Near pairs among the trips `left` (indexes into `sides`): same route, dates, call count
-/// and first call, the only candidate on both sides.
-fn near_pairs(
-    input: &Input,
-    sides: &[Vec<u32>; 2],
-    calls: &[Calls; 2],
-    left: &[Vec<u32>; 2],
-) -> Vec<(u32, u32)> {
-    let (Some(route), Some(service), Some(location), Some(departure)) = (
-        column(input.values, ROUTE_ID),
-        column(input.values, SERVICE_ID),
-        column(input.calls, LOCATION_ID),
-        column(input.calls, DEPARTURE),
-    ) else {
-        return Vec::new();
-    };
-    let keyed = [0, 1].map(|side| {
-        let own = [route.hasher(side), service.hasher(side)];
-        let first = [location.hasher(side), departure.hasher(side)];
-        let mut keys: Vec<(u64, u32)> = left[side]
-            .iter()
-            .map(|&trip| {
-                let row = sides[side][trip as usize] as usize;
-                let trip_calls = calls[side].of(trip as usize);
-                let first_call = trip_calls.first().map_or_else(keys::null, |&call| {
-                    keys::combine(first.iter().map(|hasher| hasher.get(call as usize)))
-                });
-                let parts = [
-                    own[0].get(row),
-                    own[1].get(row),
-                    keys::int(trip_calls.len() as i64),
-                    first_call,
-                ];
-                (keys::combine(parts), trip)
-            })
-            .collect();
-        keys.sort_unstable();
-        keys
-    });
-    let same_key = |ta: u32, tb: u32| {
-        let (ra, rb) = (
-            sides[0][ta as usize] as usize,
-            sides[1][tb as usize] as usize,
-        );
-        let (ca, cb) = (calls[0].of(ta as usize), calls[1].of(tb as usize));
-        route.eq(ra, rb)
-            && service.eq(ra, rb)
-            && ca.len() == cb.len()
-            && match (ca.first(), cb.first()) {
-                (None, None) => true,
-                (Some(&p), Some(&q)) => {
-                    let (p, q) = (p as usize, q as usize);
-                    location.eq(p, q) && departure.eq(p, q)
-                }
-                _ => false,
-            }
-    };
-    let (a, b) = (&keyed[0], &keyed[1]);
-    let mut pairs = Vec::new();
-    let (mut i, mut j) = (0, 0);
-    while i < a.len() && j < b.len() {
-        let (x, y) = (a[i].0, b[j].0);
-        if x != y {
-            if x < y {
-                i += 1;
-            } else {
-                j += 1;
-            }
-            continue;
-        }
-        let end_a = i + a[i..].partition_point(|entry| entry.0 == x);
-        let end_b = j + b[j..].partition_point(|entry| entry.0 == x);
-        let (group_a, group_b) = (&a[i..end_a], &b[j..end_b]);
-        for &(_, ta) in group_a {
-            let mut candidates = group_b.iter().filter(|(_, tb)| same_key(ta, *tb));
-            if let (Some(&(_, tb)), None) = (candidates.next(), candidates.next())
-                && group_a
-                    .iter()
-                    .filter(|(_, other)| same_key(*other, tb))
-                    .count()
-                    == 1
-            {
-                pairs.push((ta, tb));
-            }
-        }
-        (i, j) = (end_a, end_b);
-    }
-    pairs
 }
 
 /// `trip_id | route_id | first..last (n days) | first stop@departure → last stop@arrival |

@@ -139,6 +139,14 @@ impl<'a> Pair<'a> {
         }
     }
 
+    /// The sorted day numbers of the service a reference names.
+    pub fn days(&self, side: usize, row: usize) -> Option<&'a [i32]> {
+        match &self.cmp {
+            Cmp::Ref(pair) => pair.target.days(side, pair.content(side, row)?.ok()?),
+            _ => None,
+        }
+    }
+
     /// One side's value as text, `None` for null.
     pub fn text(&self, side: usize, row: usize) -> Option<String> {
         if side == 0 {

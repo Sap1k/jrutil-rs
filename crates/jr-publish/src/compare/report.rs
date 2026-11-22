@@ -65,6 +65,7 @@ pub fn report_json(comparison: &Comparison, verdict: &Verdict) -> String {
             "by_id": pairing.by_id,
             "by_content": pairing.by_content,
             "near": pairing.near,
+            "by_dates": pairing.by_dates,
             "unpaired_a": pairing.unpaired[0],
             "unpaired_b": pairing.unpaired[1],
         })

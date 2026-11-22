@@ -321,6 +321,14 @@ impl<'a> TargetPair<'a> {
         }
     }
 
+    /// A service's sorted day numbers; `None` for content that is not dates.
+    pub fn days(&self, side: usize, index: u32) -> Option<&'a [i32]> {
+        match &self.target.sides[side].body {
+            Body::Dates(sets) => Some(&sets[index as usize]),
+            Body::Rows(_) => None,
+        }
+    }
+
     /// A service's dates as `first..last (n days)`; `None` for content that is not dates.
     pub fn date_span(&self, side: usize, index: u32) -> Option<String> {
         let Body::Dates(sets) = &self.target.sides[side].body else {

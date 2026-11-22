@@ -485,42 +485,16 @@ fn a_near_pair_needs_a_single_candidate() {
 }
 
 #[test]
-fn a_trip_split_differently_stays_unpaired_and_is_described() {
-    let reference = short_service();
-    // The same nine dates as two trips: the first week (without 01-07) and the second.
-    let mut candidate = short_service();
-    *candidate.rows_mut("service_calendar") = [("w1", 5, 9), ("w2", 12, 16)]
-        .into_iter()
-        .map(|(id, from, to)| {
-            row(&[
-                ("service_id", s(&format!("jdf:service:{id}"))),
-                ("valid_from", d(date(2026, 1, from))),
-                ("valid_to", d(date(2026, 1, to))),
-                ("weekday_mask", i(31)),
-            ])
-        })
-        .collect();
-    set(
-        candidate.rows_mut("service_exception"),
-        0,
-        "service_id",
-        s("jdf:service:w1"),
+fn a_trip_split_evenly_in_two_stays_unpaired_and_is_described() {
+    // Two weeks as one trip, and as one trip per week: each week shares five dates with it.
+    let comparison = diff_journeys(
+        "split",
+        &slices(&[("jdf:trip:1", [1, 5], [1, 16])]),
+        &slices(&[
+            ("overlay:x:trip:1", [1, 5], [1, 9]),
+            ("overlay:x:trip:2", [1, 12], [1, 16]),
+        ]),
     );
-    *candidate.rows_mut("trip") = Vec::new();
-    *candidate.rows_mut("trip_call") = Vec::new();
-    let template = short_service();
-    for (id, service) in [("overlay:x:trip:1", "w1"), ("overlay:x:trip:2", "w2")] {
-        let mut trip = template.relations["trip"][0].clone();
-        trip.insert("trip_id".into(), s(id));
-        trip.insert("service_id".into(), s(&format!("jdf:service:{service}")));
-        candidate.rows_mut("trip").push(trip);
-        for call in &template.relations["trip_call"] {
-            let mut call = call.clone();
-            call.insert("trip_id".into(), s(id));
-            candidate.rows_mut("trip_call").push(call);
-        }
-    }
-    let comparison = diff_journeys("split", &reference, &candidate);
     assert_eq!(
         counts(&comparison),
         [
@@ -532,7 +506,7 @@ fn a_trip_split_differently_stays_unpaired_and_is_described() {
     );
     assert_eq!(
         comparison.categories["trip.missing"].groups[&None].samples[0].key,
-        "jdf:trip:1 | jdf:route:1 | 2026-01-05..2026-01-16 (9 days) \
+        "jdf:trip:1 | jdf:route:1 | 2026-01-05..2026-01-16 (10 days) \
          | jdf:stop:1@07:00:00 → jdf:stop:2@25:00:00 | 2 calls"
     );
     assert_eq!(
@@ -555,4 +529,122 @@ fn the_ledger_chooses_the_trip_identity() {
         TripIdentity::Journey
     );
     assert!(parse("trip_identity = \"source_key\"\n").is_err());
+}
+
+/// The fixture's trip as slices `(trip, from, to)`: each runs on the weekdays of
+/// 2026-`from`..=2026-`to` (month, day) on a service of its own, with the fixture's calls.
+fn slices(trips: &[(&str, [i8; 2], [i8; 2])]) -> Fixture {
+    let template = Fixture::valid();
+    let mut fixture = Fixture::valid();
+    *fixture.rows_mut("service_exception") = Vec::new();
+    *fixture.rows_mut("source_key") = Vec::new();
+    let (mut calendars, mut trip_rows, mut calls) = (Vec::new(), Vec::new(), Vec::new());
+    for (id, from, to) in trips {
+        let service = format!("{id}:service");
+        calendars.push(row(&[
+            ("service_id", s(&service)),
+            ("valid_from", d(date(2026, from[0], from[1]))),
+            ("valid_to", d(date(2026, to[0], to[1]))),
+            ("weekday_mask", i(31)),
+        ]));
+        let mut trip = template.relations["trip"][0].clone();
+        trip.insert("trip_id".into(), s(id));
+        trip.insert("service_id".into(), s(&service));
+        trip_rows.push(trip);
+        for call in &template.relations["trip_call"] {
+            let mut call = call.clone();
+            call.insert("trip_id".into(), s(id));
+            calls.push(call);
+        }
+    }
+    *fixture.rows_mut("service_calendar") = calendars;
+    *fixture.rows_mut("trip") = trip_rows;
+    *fixture.rows_mut("trip_call") = calls;
+    fixture
+}
+
+#[test]
+fn a_renamed_trip_with_two_more_dates_pairs_by_dates() {
+    let comparison = diff_journeys(
+        "by-dates",
+        &slices(&[("jdf:trip:1", [1, 5], [1, 16])]),
+        &slices(&[("overlay:x:trip:9", [1, 5], [1, 20])]),
+    );
+    assert_eq!(counts(&comparison), [("trip.changed.service_id", 1)]);
+    let sample = &comparison.categories["trip.changed.service_id"].groups[&None].samples[0];
+    assert_eq!(sample.key, "jdf:trip:1 → overlay:x:trip:9");
+    assert!(
+        sample
+            .b
+            .as_deref()
+            .is_some_and(|b| b.ends_with("+2026-01-19 +2026-01-20"))
+    );
+    assert_eq!(comparison.trip_pairing.map(|p| p.by_dates), Some(1));
+}
+
+#[test]
+fn candidates_with_equal_overlap_pair_neither() {
+    let comparison = diff_journeys(
+        "dates-tie",
+        &slices(&[("jdf:trip:1", [1, 5], [1, 16])]),
+        &slices(&[
+            ("overlay:x:trip:8", [1, 5], [1, 19]),
+            ("overlay:x:trip:9", [1, 2], [1, 16]),
+        ]),
+    );
+    assert_eq!(
+        counts(&comparison),
+        [
+            ("trip.extra", 2),
+            ("trip.missing", 1),
+            ("trip_call.extra", 4),
+            ("trip_call.missing", 2),
+        ]
+    );
+}
+
+#[test]
+fn a_candidate_without_a_common_date_does_not_pair() {
+    let comparison = diff_journeys(
+        "dates-disjoint",
+        &slices(&[("jdf:trip:1", [1, 5], [1, 16])]),
+        &slices(&[("overlay:x:trip:9", [2, 2], [2, 13])]),
+    );
+    assert_eq!(
+        counts(&comparison),
+        [
+            ("trip.extra", 1),
+            ("trip.missing", 1),
+            ("trip_call.extra", 2),
+            ("trip_call.missing", 2),
+        ]
+    );
+}
+
+#[test]
+fn slices_with_shifted_boundaries_pair_with_their_largest_overlap() {
+    let comparison = diff_journeys(
+        "dates-shifted",
+        &slices(&[
+            ("jdf:trip:a1", [1, 5], [1, 16]),
+            ("jdf:trip:a2", [1, 19], [1, 30]),
+        ]),
+        &slices(&[
+            ("overlay:x:trip:b1", [1, 5], [1, 20]),
+            ("overlay:x:trip:b2", [1, 21], [1, 30]),
+        ]),
+    );
+    assert_eq!(counts(&comparison), [("trip.changed.service_id", 2)]);
+    let keys: Vec<&str> = comparison.categories["trip.changed.service_id"].groups[&None]
+        .samples
+        .iter()
+        .map(|sample| sample.key.as_str())
+        .collect();
+    assert_eq!(
+        keys,
+        [
+            "jdf:trip:a1 → overlay:x:trip:b1",
+            "jdf:trip:a2 → overlay:x:trip:b2"
+        ]
+    );
 }

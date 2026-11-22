@@ -56,11 +56,13 @@ pub fn run(options: &Options) -> ExitCode {
     match comparison.trip_pairing {
         None => println!("trip identity: {}", profile.trip_identity.as_str()),
         Some(pairing) => println!(
-            "trip identity: {} (paired by id {}, by content {}, near {}; unpaired A {}, B {})",
+            "trip identity: {} (paired by id {}, by content {}, near {}, by dates {}; \
+             unpaired A {}, B {})",
             profile.trip_identity.as_str(),
             pairing.by_id,
             pairing.by_content,
             pairing.near,
+            pairing.by_dates,
             pairing.unpaired[0],
             pairing.unpaired[1]
         ),
