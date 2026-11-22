@@ -388,6 +388,55 @@ fn fixture() -> Fixture {
             Entity::BoardingPoint(alfa_1),
         ),
     ]);
+    // A JDF-style claim at part 1's first call on one day only, and one on the cancelled trip.
+    let claim_day = t.services.intern(days(horizon, [date(2026, 1, 12)]));
+    let claim = |origin_trip, dates, source_object: &str| ConnectionClaim {
+        direction: ClaimDirection::WaitsFor,
+        origin_trip,
+        origin_sequence: 1,
+        dates,
+        target_source_route: Some("100001".into()),
+        target_source_trip: None,
+        target_source_stop: Some("12".into()),
+        target_source_post: None,
+        target_source_end_stop: None,
+        target_source_end_post: None,
+        wait_minutes: Some(5),
+        note: Some("čeká na bus".into()),
+        target_public_line: None,
+        target_destination_text: None,
+        derivation: ClaimDerivation::Structured,
+        resolution: ClaimResolution::Unresolved,
+        target_route: None,
+        target_trip: None,
+        target_location: None,
+        source_object: source_object.into(),
+    };
+    t.connection_claims.extend([
+        claim(part_1, Some(claim_day), "claim:1"),
+        claim(gone, None, "claim:2"),
+    ]);
+    // One restriction on a call, one on a route stop whose calls reach Alfa's and Gama's slots.
+    t.restrictions.extend([
+        Restriction {
+            group: RestrictionGroup::A,
+            scope: RestrictionScope::Call {
+                trip: part_1,
+                sequence: 3,
+            },
+            source_route_stop: "2".into(),
+            source_object: "restriction:1".into(),
+        },
+        Restriction {
+            group: RestrictionGroup::Section,
+            scope: RestrictionScope::RouteStop {
+                route,
+                calls: vec![(part_1, 1), (part_2, 4), (gone, 2)].into(),
+            },
+            source_route_stop: "1".into(),
+            source_object: "restriction:2".into(),
+        },
+    ]);
     assert_eq!(t.check(), [], "the fixture is a well-formed timetable");
     Fixture { t, weekdays }
 }
@@ -684,4 +733,42 @@ fn a_duplicate_public_id_is_an_error() {
         }
         other => panic!("{other}"),
     }
+}
+
+#[test]
+fn claims_and_restrictions_follow_their_trips_and_route_stops() {
+    let fixture = fixture();
+    let tables = relations(&fixture.t, &options()).unwrap();
+    let claims = relation(&tables, "connection_claim");
+    assert_eq!(
+        texts(claims, "source_object_id"),
+        [Some("claim:1".to_owned())],
+        "the claim on the cancelled trip is absent"
+    );
+    let day = identity::service(Feed::Czptt, &days(fixture.t.horizon, [date(2026, 1, 12)]));
+    assert_eq!(texts(claims, "service_id"), [Some(day.to_string())]);
+    let calendar = texts(relation(&tables, "service_calendar"), "service_id");
+    assert!(calendar.contains(&Some(day.to_string())));
+
+    let restrictions = relation(&tables, "travel_restriction");
+    let scopes = texts(restrictions, "scope");
+    let slots = texts(restrictions, "route_stop_id");
+    let route_stop_rows: Vec<&str> = scopes
+        .iter()
+        .zip(&slots)
+        .filter(|(scope, _)| scope.as_deref() == Some("route_stop"))
+        .map(|(_, slot)| slot.as_deref().unwrap())
+        .collect();
+    assert_eq!(route_stop_rows.len(), 2, "one row per slot reached");
+    assert!(route_stop_rows.iter().any(|slot| slot.contains("54321")));
+    assert!(route_stop_rows.iter().any(|slot| slot.contains("54323")));
+    let call = scopes
+        .iter()
+        .position(|scope| scope.as_deref() == Some("trip_call"))
+        .unwrap();
+    assert!(slots[call].as_deref().unwrap().contains("54322"));
+    assert_eq!(
+        restrictions.column("call_sequence").unwrap().display(call),
+        "3"
+    );
 }

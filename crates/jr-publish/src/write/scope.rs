@@ -14,7 +14,7 @@
 //!   names.
 
 use jr_model::handle::Handle;
-use jr_model::timetable::{Entity, LocationRef, Scope, Trip};
+use jr_model::timetable::{Entity, LocationRef, RestrictionScope, Scope, Trip};
 use jr_model::{BoardingPointId, PlaceId, Timetable, TripId};
 
 use super::PublishError;
@@ -24,6 +24,8 @@ pub struct Published<'t> {
     pub t: &'t Timetable,
     /// Published trips, by handle order.
     pub trips: Vec<TripId>,
+    /// Published, by trip index.
+    pub trip: Vec<bool>,
     pub route: Vec<bool>,
     pub agency: Vec<bool>,
     pub shape: Vec<bool>,
@@ -36,6 +38,10 @@ pub struct Published<'t> {
     pub assignments: Vec<usize>,
     pub keys: Vec<usize>,
     pub call_keys: Vec<usize>,
+    /// Claims whose origin trip is published and whose own dates, if any, are not empty.
+    pub claims: Vec<usize>,
+    /// Restrictions whose trip (call scope) or route (route-stop scope) is published.
+    pub restrictions: Vec<usize>,
 }
 
 impl<'t> Published<'t> {
@@ -143,6 +149,21 @@ impl<'t> Published<'t> {
                 Entity::BoardingPoint(id) => boarding_point[id.index()],
             })
             .collect();
+        let claims: Vec<usize> = (0..t.connection_claims.len())
+            .filter(|&i| {
+                let claim = &t.connection_claims[i];
+                trip[claim.origin_trip.index()]
+                    && claim
+                        .dates
+                        .is_none_or(|dates| !t.services.get(dates).is_empty())
+            })
+            .collect();
+        let restrictions: Vec<usize> = (0..t.restrictions.len())
+            .filter(|&i| match &t.restrictions[i].scope {
+                RestrictionScope::Call { trip: id, .. } => trip[id.index()],
+                RestrictionScope::RouteStop { route: id, .. } => route[id.index()],
+            })
+            .collect();
         let call_keys: Vec<usize> = (0..t.call_keys.len())
             .filter(|&i| trip[t.call_keys[i].trip.index()])
             .collect();
@@ -161,6 +182,9 @@ impl<'t> Published<'t> {
             assignments,
             keys,
             call_keys,
+            claims,
+            restrictions,
+            trip,
         };
         published.check_route_stops()?;
         Ok(published)

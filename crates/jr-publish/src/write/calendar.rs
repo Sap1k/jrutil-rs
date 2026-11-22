@@ -39,6 +39,11 @@ impl Services {
         for &id in &published.trips {
             used[t.trips[id].service.index()] = true;
         }
+        for &index in &published.claims {
+            if let Some(dates) = t.connection_claims[index].dates {
+                used[dates.index()] = true;
+            }
+        }
         let mut services = Vec::new();
         for (handle, set) in t.services.iter() {
             if !used[handle.index()] {
@@ -53,7 +58,7 @@ impl Services {
         }
     }
 
-    /// The published ID of a published trip's service.
+    /// The published ID of a service a published trip or claim uses.
     pub fn id(&self, handle: ServiceId) -> Option<&str> {
         self.by_handle[handle.index()].map(|index| self.services[index].id.as_str())
     }

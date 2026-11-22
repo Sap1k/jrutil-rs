@@ -54,30 +54,6 @@ pub fn spec(name: &str) -> Result<&'static RelationSpec, PublishError> {
         .ok_or_else(|| PublishError::Contract(format!("no relation {name}")))
 }
 
-/// A relation with no rows.
-pub fn empty(name: &str) -> Result<Table, PublishError> {
-    let spec = spec(name)?;
-    let columns = spec
-        .fields
-        .iter()
-        .map(|field| {
-            let column = match field.ty {
-                crate::FieldType::String => Column::Str(StrColumn::default()),
-                crate::FieldType::Int16 => Column::Int16(Vec::new()),
-                crate::FieldType::Int32 => Column::Int32(Vec::new()),
-                crate::FieldType::Double => Column::Double(Vec::new()),
-                crate::FieldType::Bool => Column::Bool(Vec::new()),
-                crate::FieldType::Date32 => Column::Date(Vec::new()),
-            };
-            (field.name.clone(), column)
-        })
-        .collect();
-    Ok(Table {
-        name: name.to_owned(),
-        columns,
-    })
-}
-
 /// The relation `name` from its columns: contract order, checked, sorted by primary key.
 pub fn finish(name: &str, mut columns: Columns) -> Result<Table, PublishError> {
     let spec = spec(name)?;

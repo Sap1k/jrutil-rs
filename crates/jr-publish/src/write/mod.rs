@@ -9,11 +9,14 @@
 //! What is published: a trip whose service is not empty, and what published rows refer to
 //! ([`scope`]). A transfer, assignment, source key or call key is published when every trip and
 //! route it names is published; the places and boarding points it names are then published
-//! with it. A key on a boarding point is published when the boarding point is.
+//! with it. A key on a boarding point is published when the boarding point is. A connection
+//! claim is published when its origin trip is and its own dates are not empty; a travel
+//! restriction when its trip or route is.
 
 mod assemble;
 mod basic;
 mod calendar;
+mod claims;
 mod error;
 mod files;
 mod gtfs;
@@ -100,11 +103,11 @@ pub fn relations(
         ("assignment", Box::new(|| semantics::assignment(p))),
         (
             "connection_claim",
-            Box::new(|| assemble::empty("connection_claim")),
+            Box::new(|| claims::connection_claim(p, s)),
         ),
         (
             "travel_restriction",
-            Box::new(|| assemble::empty("travel_restriction")),
+            Box::new(|| claims::travel_restriction(p)),
         ),
         ("source_key", Box::new(|| keys::source_key(p))),
         ("call_key", Box::new(|| keys::call_key(p))),
