@@ -40,7 +40,7 @@ arrow-array = "60.1"
 arrow-schema = "60.1"
 parquet = { version = "60.1", default-features = false, features = ["arrow", "snap"] }
 # The in-memory buffer parquet reads from (`ChunkReader for Bytes`); already in the tree via parquet.
-bytes = "1.12"
+bytes = "1"
 # Package reading (jr-publish): gtfs.zip members and their CSV; parallel column decoding.
 zip = { version = "9.8", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 csv = "1.4"

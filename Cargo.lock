@@ -759,6 +759,7 @@ dependencies = [
  "jr-geo",
  "jr-model",
  "rayon",
+ "regex",
  "serde",
  "sha2",
  "thiserror",
@@ -774,6 +775,7 @@ dependencies = [
  "jr-model",
  "rayon",
  "serde",
+ "serde_json",
  "thiserror",
  "toml",
 ]

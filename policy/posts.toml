@@ -1,0 +1,48 @@
+# Constants of the post estimator's evaluator (crates/jr-posts/src/evaluate,
+# jr_posts::evaluate::Constants). F# JrUtil compiled these in; rule IDs are those of
+# docs/rules/posts.md. The per-build thresholds are not here: they are the policy document
+# (policy v2 + learned model, e.g. Oběhy's learned-v1.json), versioned with its model (POST-R004).
+# The [learned] values are part of the shipped model's contract: they must equal the values the
+# model was trained with (jrutil/scripts/post-scorer), so change them only with a new model.
+
+# The local metric of the evaluator ("equirect", section 3 conventions): metres per degree of
+# latitude and of longitude at the equator (scaled by the cosine of the mean latitude).
+[metric]
+metres_per_degree_latitude = 110540.0
+metres_per_degree_longitude = 111320.0
+# POST-R085 (B18 kept for parity): the isolation adjustment measures latitude with the
+# longitude factor.
+isolation_metres_per_degree_latitude = 111320.0
+
+# POST-R081: a hypothesis without explicit modes inherits those of hypotheses of the stop within
+# this distance (between medoids).
+[modes]
+inheritance_radius_m = 15.0
+
+# POST-R082: alignment falls to 0 at this heading difference; proximity at this distance.
+[geometry]
+alignment_range_deg = 90.0
+proximity_range_m = 50.0
+
+[heuristic]
+# POST-R085: contexts of other families counted towards a hypothesis' popularity, at most.
+popularity_context_cap = 5
+# POST-R087: a routed advantage counts only when the geometry margin is at least minus this.
+geometry_margin_tolerance = 0.000001
+
+[learned]
+# POST-R101: a source is stop-level when it occurs at this many multi-post stops or more ...
+stop_level_minimum_stops = 20
+# ... and has two or more route points at fewer than this share of them.
+stop_level_maximum_share = 0.5
+# POST-R103: posts are at most this wide and a stop with this many numbered hypotheses has bays.
+maximum_post_diameter_m = 25.0
+minimum_numbered_bays = 3
+# POST-R103, R104: the mean latitude used when a stop has no hypotheses (never reached).
+empty_stop_latitude = 50.0
+# POST-R104: areas are at most this wide.
+maximum_area_diameter_m = 40.0
+# POST-R106: routed excess is capped here, and a missing excess counts as this.
+excess_cap_m = 1000.0
+# POST-R108: a stop with this many posts or more uses the `complex` threshold.
+complex_stop_posts = 3

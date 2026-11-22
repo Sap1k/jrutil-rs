@@ -2339,3 +2339,39 @@ index from the model.
   coordinate source (e.g. `estimator`) and precision `estimated` on boarding points whose position
   comes from the pass. *Recommendation: (b)*; it needs a model field (boarding-point position with
   source), which is an architecture decision.
+
+## 12. Rules added by the evaluator
+
+Rules the Rust evaluator and pack reader (`jr_posts::evaluate`, `jr_formats::post_evidence`,
+`jr_formats::post_policy`) add to the F# behaviour. None changes a decision on a valid pack.
+
+#### POST-R180 — Per-stop evaluation in parallel
+- **What:** stops are evaluated independently (consolidation, heuristic, learned scorer) on
+  rayon and put back in stop order; the only pack-wide input is the stop-level source list
+  (R101), computed once before. Authored positions (R122) are computed after, sequentially.
+- **Where:** `jr_posts::evaluate::evaluate`.
+- **Why:** AGENTS.md rule 7: results must not depend on the thread count. F# evaluated stop by
+  stop on one thread.
+- **Pinned by:** `post_r180_decisions_do_not_depend_on_the_thread_count`.
+- **Constants:** none.
+- **Diagnostic:** none.
+
+#### POST-R181 — Unknown policy document keys are rejected
+- **What:** an unknown key anywhere in the policy document (policy v2 object, scorer, model,
+  stage, thresholds) rejects the document; F# (System.Text.Json) ignored unknown keys. Missing
+  policy v2 keys still read as 0 / `false` before validation, as in F#; a JSON `null` for a
+  policy value reads as missing (F# rejected it).
+- **Where:** `jr_formats::post_policy::parse`.
+- **Why:** a misspelt threshold must not silently become 0.
+- **Pinned by:** `post_r181_unknown_policy_keys_are_rejected`.
+- **Constants:** none.
+- **Diagnostic:** error.
+
+#### POST-R182 — The relations of a pack name one source
+- **What:** the five relations' footer `obehy.source_id` must be equal (and non-blank); F#
+  checked only that each is non-blank.
+- **Where:** `jr_formats::post_evidence::read`.
+- **Why:** a pack is one capture of one snapshot; the in-memory pack has one source id.
+- **Pinned by:** `post_r182_relations_of_one_pack_name_one_source`.
+- **Constants:** none.
+- **Diagnostic:** error.
