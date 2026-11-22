@@ -84,9 +84,8 @@ fn r071_one_resolver_takes_first_matches_and_reads_occurrences_1_based() {
     let (timetable, _) = timetable_of(root(repeated(), CENTRAL, "36|CZ57076||CZ57017||0|"));
     assert_eq!(flags(&timetable).1, Tristate::No);
 
-    // Occurrence 2 is the second Praha: calls 3 and 4 only.
-    let (timetable, diagnostics) =
-        timetable_of(root(repeated(), CENTRAL, "36|CZ57076|2|CZ57017||0|"));
+    // Occurrence 1 is the second Praha (occurrences count from zero): calls 3 and 4 only.
+    let (timetable, _) = timetable_of(root(repeated(), CENTRAL, "36|CZ57076|1|CZ57017||0|"));
     assert_eq!(flags(&timetable).1, Tristate::Unknown);
     let trip = timetable.trips.handles().next().expect("trip");
     assert_eq!(
@@ -102,7 +101,6 @@ fn r071_one_resolver_takes_first_matches_and_reads_occurrences_1_based() {
             ),
         ]
     );
-    assert!(has(&diagnostics, "czptt_explicit_occurrence"));
 
     // A blank end is the first match too: a station written as a passenger row and a following
     // non-passenger row ends the note at the passenger row.

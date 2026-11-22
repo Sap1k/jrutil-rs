@@ -166,8 +166,11 @@ commit.
 Differences from F# that are deliberate and visible to a consumer; each is a ledger category
 with its reason, listed here so that the maintainer can veto one before it reaches production.
 
-Rail:
-- a train with a negative day offset moves its dates, not only its times (F# bug fixed);
+Rail (national comparison done 2026-11-22, `docs/golden.md`):
+- a train with a negative day offset moves its dates, not only its times (F# bug fixed; five
+  paths nationally);
+- a note or IDS entry over a point the path visits twice resolves to the first visit, for an end
+  the first at or after the start (17 reversing trains gain zones, three notes their interval);
 - trip-to-trip transfers of replacement buses are published in serving;
 - a station that cannot be placed makes the package ineligible instead of publishing it at 0,0.
 

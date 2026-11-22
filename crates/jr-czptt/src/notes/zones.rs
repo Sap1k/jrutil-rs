@@ -96,22 +96,8 @@ pub(crate) fn zones(
             );
             continue;
         }
-        let first = resolve(
-            pa,
-            &path.calls,
-            fields[1],
-            fields[2],
-            End::Start,
-            diagnostics,
-        );
-        let last = resolve(
-            pa,
-            &path.calls,
-            fields[3],
-            fields[4],
-            End::End(first),
-            diagnostics,
-        );
+        let first = resolve(&path.calls, fields[1], fields[2], End::Start);
+        let last = resolve(&path.calls, fields[3], fields[4], End::End(first));
         let record = valid_at(&catalog.ids, fields[0], path.first_date, |record| {
             (&record.code, record.valid_from, record.valid_to)
         });

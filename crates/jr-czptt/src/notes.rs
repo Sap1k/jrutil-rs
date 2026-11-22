@@ -251,22 +251,8 @@ impl PathNotes {
                 ((fields.len() >= 4).then_some(0), non_blank(fields.get(9)))
             };
             if let Some(at) = endpoints {
-                let first = resolve(
-                    pa,
-                    &path.calls,
-                    fields[at],
-                    fields[at + 1],
-                    End::Start,
-                    diagnostics,
-                );
-                let last = resolve(
-                    pa,
-                    &path.calls,
-                    fields[at + 2],
-                    fields[at + 3],
-                    End::End(first),
-                    diagnostics,
-                );
+                let first = resolve(&path.calls, fields[at], fields[at + 1], End::Start);
+                let last = resolve(&path.calls, fields[at + 2], fields[at + 3], End::End(first));
                 spec.range = first.zip(last).filter(|(first, last)| first <= last);
             }
             if spec.range.is_none() {

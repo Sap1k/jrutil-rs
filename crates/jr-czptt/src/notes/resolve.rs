@@ -1,6 +1,6 @@
 //! The one interval resolver (R071, Q3), used by notes and IDS zones.
 
-use jr_model::{Diagnostic, Diagnostics, Rule, Severity};
+use jr_model::Rule;
 
 use crate::path::Call;
 
@@ -8,8 +8,10 @@ use crate::path::Call;
 /// in every real message) and an occurrence for points the path visits twice. A blank
 /// occurrence is the first match, for a start and for an end alike (a station written as two
 /// consecutive rows ends a note at its first row); only when an end's first match lies before
-/// the start is it the first match at or after the start. No real message gives an
-/// occurrence, so one that appears is resolved 1-based and diagnosed.
+/// the start is it the first match at or after the start. An explicit occurrence counts the
+/// matches from zero: `1` is the second visit. A train that reverses at its terminus and runs
+/// back through a station names the later visit this way, so that a note reaches its last
+/// stop (a handful of paths in a timetable year do).
 pub(crate) const R071: Rule = Rule {
     id: "CZPTT-R071",
     summary: "An interval endpoint is the first matching call (for an end, not before the start), or the n-th",
@@ -23,14 +25,7 @@ pub(crate) enum End {
 }
 
 /// The source index of the call an endpoint names, or `None`.
-pub(crate) fn resolve(
-    pa: &str,
-    calls: &[Call],
-    code: &str,
-    occurrence: &str,
-    end: End,
-    diagnostics: &mut Diagnostics,
-) -> Option<u32> {
+pub(crate) fn resolve(calls: &[Call], code: &str, occurrence: &str, end: End) -> Option<u32> {
     let code = code.trim();
     let (country, code) = match code.get(..2) {
         Some(prefix) if code.len() > 2 && prefix.chars().all(|c| c.is_ascii_alphabetic()) => {
@@ -62,15 +57,5 @@ pub(crate) fn resolve(
         .all(|b| b.is_ascii_digit())
         .then(|| occurrence.parse().ok())
         .flatten()?;
-    diagnostics.push(
-        Diagnostic::new(
-            "czptt_explicit_occurrence",
-            Severity::Info,
-            pa,
-            format!("endpoint {code} names occurrence {occurrence}, read 1-based"),
-        )
-        .rule(R071),
-    );
-    nth.checked_sub(1)
-        .and_then(|position| matches.map(|call| call.index).nth(position))
+    matches.map(|call| call.index).nth(nth)
 }

@@ -29,9 +29,39 @@ osr graph on the development machine): 16 s, about 1.0 GB peak, 4,054 trips and 
 parity/czptt.toml` passes: eight explained categories; trips, calls, times, route stops, zones,
 notes and the GTFS stop_times, trips, routes and transfers are identical.
 
-Not covered by the subset, to be looked at in the full build made with the maintainer: paths
-with a negative day offset (CZPTT-R066), explicit note occurrences (CZPTT-R071), and the
-route-shapes phase.
+Not covered by the subset: paths with a negative day offset (CZPTT-R066) and explicit note
+occurrences (CZPTT-R071), both seen in the national comparison below, and the route-shapes
+phase, which has not run on real data.
+
+### The national rail comparison (2026-11-22)
+
+Made once, with the maintainer, on the full snapshot of timetable year 2026 (`<root>/czptt/full`,
+221,736 messages; `<root>/czptt/build-full.toml`). Both compilers without route shapes.
+
+| | F# JrUtil `aa2f1db` | jrutil-rs |
+|---|---|---|
+| ordering the messages | 6 min 15 s (Python `flatten_messages`) | part of the build |
+| build | 5 min 11 s, 9.1 GB peak | 36 s, 2.3 GB peak |
+| result | 81,874 trips, 1,252,358 calls | the same trips and calls |
+
+`jrutil compare <root>/czptt/fs-full/package <root>/czptt/rs-full/package --expect
+parity/czptt.toml` passes: no trip or call is missing or extra, and in `gtfs.zip` the
+`stop_times.txt` (669,050 rows), `routes.txt`, `agency.txt` and the transfers are identical.
+The eight categories of the subset appear with national counts, and the national feed adds:
+
+- **Five paths with a negative day offset** (cross-border trains shortly before midnight, ten
+  trips). F# moved their stops' times a day forward and left the dates, so they ran a day late,
+  and left the railway points between them unmoved. They run from the day before, with times
+  past 24:00.
+- **Explicit occurrences** (21 note and IDS endpoints): a train that reverses at its terminus
+  names the later visit of a station as occurrence `1`. The first verdict read this 1-based, on
+  the belief that no real message has one; the comparison showed F#'s zero-based reading is the
+  one under which the notes reach the last stop, and the resolver was corrected (the only code
+  change the comparison caused).
+- **Intervals over repeated points** (verdict Q3): three notes whose end point is visited
+  before the start as well as after it now cover their interval instead of the whole trip, and
+  17 reversing trains get the IDS zones F# could not resolve; with those, eleven route stops
+  state their zones once for the route instead of per call.
 
 ## Road (JDF, posts, overlay)
 

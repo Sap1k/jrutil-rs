@@ -1,17 +1,18 @@
-# Rail package: every expected difference between the F# JrUtil reference and jrutil-rs on the
-# golden subset (docs/golden.md), with its reason. Anything not listed here fails the comparison.
+# Rail package: every expected difference between the F# JrUtil reference and jrutil-rs, with
+# its reason. Anything not listed here fails the comparison.
 #
 #   jrutil compare <root>/czptt/fs/package <root>/czptt/rs/package --expect parity/czptt.toml
 #
-# Counts are those of the 5% subset. Rule and question numbers refer to docs/rules/czptt.md and
-# docs/rules/serving.md.
+# Counts are those of the national feed of timetable year 2026 (docs/golden.md, "The national
+# rail comparison"); the 5% golden subset stays within them. Rule and question numbers refer to
+# docs/rules/czptt.md and docs/rules/serving.md.
 
 [[category]]
 name = "country-code-published"
 matches = "location.changed.country_code"
 reason = "F# published a country only for railway points that are not stops. Every rail location now carries its country (serving verdict 2)."
 a = "^$"
-max = 7200
+max = 9556
 
 [[category]]
 name = "unused-operational-points"
@@ -31,21 +32,21 @@ max = 30
 name = "notes-of-rejected-paths"
 matches = "service_note.missing"
 reason = "F# published the notes of paths it rejected, linked to nothing (B10). Notes are published only for accepted paths (Q13)."
-max = 60
+max = 1213
 
 [[category]]
 name = "stop-pair-transfers"
 matches = "transfer.missing"
 reason = "F# stored the MOTIS form of a rail to replacement-bus transfer: a zero-minute stop pair without trips (R084). The relation now holds the transfer between the two trips (Q14); transfers.txt in gtfs.zip is unchanged."
 key = "\\|null\\|null\\|null\\|null\\|2\\|0\\|null$"
-max = 460
+max = 1493
 
 [[category]]
 name = "trip-transfers"
 matches = "transfer.extra"
 reason = "The timed transfers between a train and its replacement bus, one per pair of trips (Q14)."
 key = "\\|1\\|0\\|null$"
-max = 1020
+max = 23712
 
 [[category]]
 name = "osm-candidate-order-latitude"
@@ -60,3 +61,70 @@ matches = "location.changed.longitude"
 reason = "As for the latitude."
 key = "^czptt:stop:(AT|DE|PL|SK):"
 max = 12
+
+# --- Seen only in the national feed ---
+
+[[category]]
+name = "negative-offset-dates"
+matches = "trip.changed.service_id"
+reason = "A path whose first locations lie before midnight of its calendar day (a negative day offset; five paths, all cross-border trains shortly before midnight). F# moved the stops' times one day forward and left the dates, so the train ran a day late. The trip runs from the day before with times past 24:00 (R066)."
+max = 10
+
+[[category]]
+name = "negative-offset-point-arrival"
+matches = "trip_call.changed.scheduled_arrival"
+reason = "The railway points that are not stops on the paths above: F# left their times unmoved (negative, or a day before the stops around them). They follow the trip (R066)."
+max = 12
+
+[[category]]
+name = "negative-offset-point-departure"
+matches = "trip_call.changed.scheduled_departure"
+reason = "As for the arrival."
+max = 12
+
+[[category]]
+name = "negative-offset-key-period"
+matches = "source_key.missing"
+reason = "The path, train and train number keys of the trips above were valid on F#'s dates."
+key = "^czptt:(pa|tr|train_number)\\|"
+max = 30
+
+[[category]]
+name = "negative-offset-key-period-moved"
+matches = "source_key.extra"
+reason = "The same keys, valid on the days the trips run."
+key = "^czptt:(pa|tr|train_number)\\|"
+max = 30
+
+[[category]]
+name = "note-interval-unresolved-in-reference"
+matches = "assignment.missing"
+reason = "A note whose end point the path visits before its start point as well as after it. F# took the first visit, found the interval reversed and attached the note to the whole trip, every part of it. The end is the first visit at or after the start (Q3), so the note covers its interval."
+key = "^trip\\|note\\|"
+max = 4
+
+[[category]]
+name = "note-interval-resolved"
+matches = "assignment.extra"
+reason = "The same notes on their interval."
+key = "^call_range\\|note\\|"
+max = 3
+
+[[category]]
+name = "zones-of-repeated-points"
+matches = "call_zone.extra"
+reason = "An IDS entry that names a point the path visits twice without saying which visit. F# resolved such an entry only when the point occurs once, so 17 trains that reverse at a terminus had no zone on some calls (Praha hl.n. among them). The one interval resolver takes the first visit, for an end the first at or after the start (Q3, R085)."
+max = 63
+
+[[category]]
+name = "zones-stated-on-the-route-stop"
+matches = "route_stop_zone.extra"
+reason = "With the calls above resolved, every trip of a route agrees on the zones of eleven more route stops, so they are stated once for the route stop (serving 7.5)."
+max = 11
+
+[[category]]
+name = "zones-no-longer-per-call"
+matches = "call_zone.missing"
+reason = "The per-call rows of the zones now stated on those route stops."
+max = 116
+
