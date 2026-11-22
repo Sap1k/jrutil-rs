@@ -1,0 +1,22 @@
+[package]
+name = "jr-formats"
+description = "Readers and writers of file formats: bytes to typed source facts, no policy."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+jr-model.workspace = true
+jiff.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+zip.workspace = true
+csv.workspace = true
+quick-xml.workspace = true
+flate2.workspace = true
+
+[lints]
+workspace = true

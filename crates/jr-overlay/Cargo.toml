@@ -1,0 +1,16 @@
+[package]
+name = "jr-overlay"
+description = "The GTFS overlay engine: source profiles, matching, projection to edits. No I/O."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+jr-model.workspace = true
+jr-formats.workspace = true
+jr-geo.workspace = true
+
+[lints]
+workspace = true

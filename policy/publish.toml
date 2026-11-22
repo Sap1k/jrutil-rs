@@ -1,0 +1,15 @@
+# What the projections are told rather than read from a timetable.
+
+# GTFS feed_info.txt.
+publisher_name = "Oběhy project (via jrutil-rs)"
+publisher_url = "https://obehy.cz"
+lang = "cs"
+contact_email = "admin@obehy.cz"
+
+# Appended to the name of a place whose position is an estimate, and to its boarding points.
+approximate_suffix = " [?]"
+
+# MOTIS applies its default transfer time unless transfers.txt holds a stop-pair minimum, and
+# ignores trip-to-trip transfers. So a timed transfer between two boarding points is written to
+# GTFS as a zero-minute stop pair. The serving relation keeps the transfer between the trips.
+gtfs_timed_transfers_as_stop_pairs = true

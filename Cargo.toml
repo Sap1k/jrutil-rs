@@ -1,0 +1,65 @@
+# jrutil-rs: the static compiler for Oběhy (ARCHITECTURE.md). Dependencies point one way:
+#
+#   jrutil -> jr-publish, jr-overlay, jr-posts, jr-enrich, jr-jdf, jr-czptt
+#          -> jr-geo, jr-formats -> jr-model
+#
+# Only jr-publish and jrutil touch the file system;
+# `crates/jrutil/tests/dependency_direction.rs` enforces both from Cargo.lock.
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.100"
+license = "AGPL-3.0-only"
+publish = false
+
+[workspace.dependencies]
+jr-model = { path = "crates/jr-model" }
+jr-formats = { path = "crates/jr-formats" }
+jr-geo = { path = "crates/jr-geo" }
+jr-czptt = { path = "crates/jr-czptt" }
+jr-jdf = { path = "crates/jr-jdf" }
+jr-enrich = { path = "crates/jr-enrich" }
+jr-posts = { path = "crates/jr-posts" }
+jr-overlay = { path = "crates/jr-overlay" }
+jr-publish = { path = "crates/jr-publish" }
+
+clap = { version = "4.6", features = ["derive"] }
+# Dates only (service dates, the GVD window); Europe/Prague from the bundled IANA database.
+jiff = { version = "1.0", default-features = false, features = ["std", "tzdb-bundle-always", "serde"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["float_roundtrip", "preserve_order"] }
+toml = { version = "1.2", features = ["preserve_order"] }
+thiserror = "2.0"
+sha2 = "0.11"
+# Serving relations (jr-publish) and the post evidence pack (jr-posts).
+arrow-array = "60.1"
+arrow-schema = "60.1"
+parquet = { version = "60.1", default-features = false, features = ["arrow", "snap"] }
+# Package reading (jr-publish): gtfs.zip members and their CSV; parallel column decoding.
+zip = { version = "9.8", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+csv = "1.4"
+rayon = "1.12"
+# CZPTT XML messages, the gzip change objects and OSM PBF blobs (jr-formats).
+quick-xml = "0.42"
+flate2 = { version = "1.1", default-features = false, features = ["zlib-rs"] }
+# Parity ledger filters (jr-publish compare).
+regex = "1.13"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
+
+[profile.release]
+debug = "line-tables-only"
+
+# Tests run real fixtures through the compilers; unoptimised they are needlessly slow.
+[profile.dev.package."*"]
+opt-level = 2

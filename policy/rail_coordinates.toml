@@ -1,0 +1,353 @@
+# Constants of the rail coordinates pass (crates/jr-enrich/src/rail_coordinates.rs) and of the
+# name rules it uses (crates/jr-geo/src/names.rs). Rule IDs are those of docs/rules/czptt.md;
+# every value belongs to the rule named above its section.
+
+# CZPTT-R018–R021: SR70.csv rows. A code is its first `code_length` characters (a six-digit
+# SR70 code loses its check digit); a name equal to `name_placeholder` is no name. SR70 places
+# points of `country` only (R097).
+[sr70]
+country = "CZ"
+code_length = 5
+name_placeholder = "-"
+
+# CZPTT-R022–R025: OSM candidates.
+[osm]
+# R022: a node is a candidate when one of these tags has one of the listed values (verdict Q6
+# keeps the public_transport branch). Values compare case-sensitively.
+eligible = [
+    { key = "railway", values = ["station", "halt", "stop"] },
+    { key = "public_transport", values = ["station", "stop_position"] },
+]
+# R023: whitespace removed, upper-cased, kept when `plc_country_letters` ASCII letters are
+# followed by `plc_code_digits` ASCII digits.
+plc_tag = "ref:EU:PLC"
+plc_country_letters = 2
+plc_code_digits = 5
+# R024: the country when the PLC gives none, first non-blank tag wins; values trimmed,
+# upper-cased and mapped through `country_alpha3`.
+country_tags = ["addr:country", "is_in:country_code"]
+# R025: name tags in this order; values trimmed, blanks and repeats dropped.
+name_tags = [
+    "name", "official_name", "alt_name", "short_name", "loc_name", "old_name", "uic_name",
+    "name:cs", "name:de", "name:pl", "name:sk",
+]
+
+# CZPTT-R024: alpha-3 country tags to alpha-2; other values are kept as written.
+[osm.country_alpha3]
+AUT = "AT"
+CZE = "CZ"
+DEU = "DE"
+POL = "PL"
+SVK = "SK"
+
+# CZPTT-R090–R093 (jr_geo::names::NameTables).
+[names]
+# R090: combining marks dropped (Combining Diacritical Marks and their extensions and supplement,
+# combining half marks).
+marks = [
+    ["\u0300", "\u036F"],
+    ["\u1AB0", "\u1AFF"],
+    ["\u1DC0", "\u1DFF"],
+    ["\uFE20", "\uFE2F"],
+]
+# R091: the normalised forms are compared.
+railway_suffix_tokens = [
+    "Bf", "Fbf", "Gr", "Hp", "Hst", "N", "Nz", "Pzs", "S", "St", "Z", "Zast", "Zastavka",
+]
+route_section_prefix = "R"
+qualifier_open = "("
+qualifier_close = ")"
+# R093.
+protected_qualifiers = [
+    "Ost", "West", "Nord", "Süd", "Mitte",
+    "východ", "západ", "sever", "jih", "juh", "střed",
+    "Wschód", "Zachód", "Północ", "Południe", "Górna", "Dolna",
+    "město", "mesto", "miasto", "centrum",
+]
+
+# R090: one character to its replacement. The letters that do not decompose (ß ẞ Ł ł Ø ø Æ æ)
+# and, for U+00C0–U+024F, every letter's canonical decomposition with its marks removed.
+[names.transliteration]
+"À" = "A"
+"Á" = "A"
+"Â" = "A"
+"Ã" = "A"
+"Ä" = "A"
+"Å" = "A"
+"Æ" = "AE"
+"Ç" = "C"
+"È" = "E"
+"É" = "E"
+"Ê" = "E"
+"Ë" = "E"
+"Ì" = "I"
+"Í" = "I"
+"Î" = "I"
+"Ï" = "I"
+"Ñ" = "N"
+"Ò" = "O"
+"Ó" = "O"
+"Ô" = "O"
+"Õ" = "O"
+"Ö" = "O"
+"Ø" = "O"
+"Ù" = "U"
+"Ú" = "U"
+"Û" = "U"
+"Ü" = "U"
+"Ý" = "Y"
+"ß" = "ss"
+"à" = "a"
+"á" = "a"
+"â" = "a"
+"ã" = "a"
+"ä" = "a"
+"å" = "a"
+"æ" = "ae"
+"ç" = "c"
+"è" = "e"
+"é" = "e"
+"ê" = "e"
+"ë" = "e"
+"ì" = "i"
+"í" = "i"
+"î" = "i"
+"ï" = "i"
+"ñ" = "n"
+"ò" = "o"
+"ó" = "o"
+"ô" = "o"
+"õ" = "o"
+"ö" = "o"
+"ø" = "o"
+"ù" = "u"
+"ú" = "u"
+"û" = "u"
+"ü" = "u"
+"ý" = "y"
+"ÿ" = "y"
+"Ā" = "A"
+"ā" = "a"
+"Ă" = "A"
+"ă" = "a"
+"Ą" = "A"
+"ą" = "a"
+"Ć" = "C"
+"ć" = "c"
+"Ĉ" = "C"
+"ĉ" = "c"
+"Ċ" = "C"
+"ċ" = "c"
+"Č" = "C"
+"č" = "c"
+"Ď" = "D"
+"ď" = "d"
+"Ē" = "E"
+"ē" = "e"
+"Ĕ" = "E"
+"ĕ" = "e"
+"Ė" = "E"
+"ė" = "e"
+"Ę" = "E"
+"ę" = "e"
+"Ě" = "E"
+"ě" = "e"
+"Ĝ" = "G"
+"ĝ" = "g"
+"Ğ" = "G"
+"ğ" = "g"
+"Ġ" = "G"
+"ġ" = "g"
+"Ģ" = "G"
+"ģ" = "g"
+"Ĥ" = "H"
+"ĥ" = "h"
+"Ĩ" = "I"
+"ĩ" = "i"
+"Ī" = "I"
+"ī" = "i"
+"Ĭ" = "I"
+"ĭ" = "i"
+"Į" = "I"
+"į" = "i"
+"İ" = "I"
+"Ĵ" = "J"
+"ĵ" = "j"
+"Ķ" = "K"
+"ķ" = "k"
+"Ĺ" = "L"
+"ĺ" = "l"
+"Ļ" = "L"
+"ļ" = "l"
+"Ľ" = "L"
+"ľ" = "l"
+"Ł" = "L"
+"ł" = "l"
+"Ń" = "N"
+"ń" = "n"
+"Ņ" = "N"
+"ņ" = "n"
+"Ň" = "N"
+"ň" = "n"
+"Ō" = "O"
+"ō" = "o"
+"Ŏ" = "O"
+"ŏ" = "o"
+"Ő" = "O"
+"ő" = "o"
+"Ŕ" = "R"
+"ŕ" = "r"
+"Ŗ" = "R"
+"ŗ" = "r"
+"Ř" = "R"
+"ř" = "r"
+"Ś" = "S"
+"ś" = "s"
+"Ŝ" = "S"
+"ŝ" = "s"
+"Ş" = "S"
+"ş" = "s"
+"Š" = "S"
+"š" = "s"
+"Ţ" = "T"
+"ţ" = "t"
+"Ť" = "T"
+"ť" = "t"
+"Ũ" = "U"
+"ũ" = "u"
+"Ū" = "U"
+"ū" = "u"
+"Ŭ" = "U"
+"ŭ" = "u"
+"Ů" = "U"
+"ů" = "u"
+"Ű" = "U"
+"ű" = "u"
+"Ų" = "U"
+"ų" = "u"
+"Ŵ" = "W"
+"ŵ" = "w"
+"Ŷ" = "Y"
+"ŷ" = "y"
+"Ÿ" = "Y"
+"Ź" = "Z"
+"ź" = "z"
+"Ż" = "Z"
+"ż" = "z"
+"Ž" = "Z"
+"ž" = "z"
+"Ơ" = "O"
+"ơ" = "o"
+"Ư" = "U"
+"ư" = "u"
+"Ǎ" = "A"
+"ǎ" = "a"
+"Ǐ" = "I"
+"ǐ" = "i"
+"Ǒ" = "O"
+"ǒ" = "o"
+"Ǔ" = "U"
+"ǔ" = "u"
+"Ǖ" = "U"
+"ǖ" = "u"
+"Ǘ" = "U"
+"ǘ" = "u"
+"Ǚ" = "U"
+"ǚ" = "u"
+"Ǜ" = "U"
+"ǜ" = "u"
+"Ǟ" = "A"
+"ǟ" = "a"
+"Ǡ" = "A"
+"ǡ" = "a"
+"Ǣ" = "Æ"
+"ǣ" = "æ"
+"Ǧ" = "G"
+"ǧ" = "g"
+"Ǩ" = "K"
+"ǩ" = "k"
+"Ǫ" = "O"
+"ǫ" = "o"
+"Ǭ" = "O"
+"ǭ" = "o"
+"Ǯ" = "Ʒ"
+"ǯ" = "ʒ"
+"ǰ" = "j"
+"Ǵ" = "G"
+"ǵ" = "g"
+"Ǹ" = "N"
+"ǹ" = "n"
+"Ǻ" = "A"
+"ǻ" = "a"
+"Ǽ" = "Æ"
+"ǽ" = "æ"
+"Ǿ" = "Ø"
+"ǿ" = "ø"
+"Ȁ" = "A"
+"ȁ" = "a"
+"Ȃ" = "A"
+"ȃ" = "a"
+"Ȅ" = "E"
+"ȅ" = "e"
+"Ȇ" = "E"
+"ȇ" = "e"
+"Ȉ" = "I"
+"ȉ" = "i"
+"Ȋ" = "I"
+"ȋ" = "i"
+"Ȍ" = "O"
+"ȍ" = "o"
+"Ȏ" = "O"
+"ȏ" = "o"
+"Ȑ" = "R"
+"ȑ" = "r"
+"Ȓ" = "R"
+"ȓ" = "r"
+"Ȕ" = "U"
+"ȕ" = "u"
+"Ȗ" = "U"
+"ȗ" = "u"
+"Ș" = "S"
+"ș" = "s"
+"Ț" = "T"
+"ț" = "t"
+"Ȟ" = "H"
+"ȟ" = "h"
+"Ȧ" = "A"
+"ȧ" = "a"
+"Ȩ" = "E"
+"ȩ" = "e"
+"Ȫ" = "O"
+"ȫ" = "o"
+"Ȭ" = "O"
+"ȭ" = "o"
+"Ȯ" = "O"
+"ȯ" = "o"
+"Ȱ" = "O"
+"ȱ" = "o"
+"Ȳ" = "Y"
+"ȳ" = "y"
+"ẞ" = "SS"
+
+# CZPTT-R094–R095: OSM candidate groups and the corridor veto (R096 ranks without constants).
+[matching]
+# R094: fuzzy candidates need this best compatible similarity; the best `fuzzy_max_candidates`
+# by score (then node ID) are kept.
+fuzzy_min_similarity = 0.58
+fuzzy_max_candidates = 32
+# R095: an edge is plausible within slack + elapsed time × speed.
+corridor_slack_m = 2000.0
+corridor_speed_kmh = 150.0
+
+# CZPTT-R097: an OSM node with the point's PLC farther than this from SR70 is reported.
+[authority]
+sr70_osm_disagreement_m = 1.0
+
+# CZPTT-R098: passes that re-resolve every non-SR70 point against all other picks.
+[resolution]
+reevaluation_passes = 2
+
+# CZPTT-R100, verdict Q12: past the last anchor, a point is placed this far north per call.
+[estimate]
+route_end_offset_m_per_call = 300.0
+metres_per_degree_latitude = 111320.0

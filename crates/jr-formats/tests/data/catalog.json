@@ -1,0 +1,87 @@
+{
+  "central_notes": [
+    {
+      "code": "10",
+      "name": "1+2",
+      "text": null,
+      "valid_from": "2019-01-01",
+      "valid_to": "2100-12-31"
+    },
+    {
+      "code": "11",
+      "name": "jednička",
+      "text": null,
+      "valid_from": "2019-01-01",
+      "valid_to": "2100-12-31"
+    }
+  ],
+  "commercial_train_types": [
+    {
+      "abbreviation": "Sp",
+      "code": "122"
+    },
+    {
+      "abbreviation": "R",
+      "code": "157"
+    }
+  ],
+  "companies": [
+    {
+      "code": "0002",
+      "name": "nabídková trasa ŽSR",
+      "url": null
+    },
+    {
+      "code": "0022",
+      "name": "Ukrzaliznytsya",
+      "url": null
+    }
+  ],
+  "ids": [
+    {
+      "abbreviation": "PID_Praha",
+      "code": "10",
+      "name": "Pražská integrovaná doprava",
+      "note": "kmen hl. m. Praha",
+      "valid_from": "2020-09-01",
+      "valid_to": "2100-12-31"
+    },
+    {
+      "abbreviation": "PID_PrahaP",
+      "code": "11",
+      "name": "Pražská integrovaná doprava",
+      "note": "PID pásmo P",
+      "valid_from": "2020-09-01",
+      "valid_to": "2100-12-31"
+    }
+  ],
+  "lines": [
+    {
+      "abbreviation": "Ex1",
+      "code": "1",
+      "mark": "Ex1",
+      "name": "Praha – Ostrava – Návsí / Opava",
+      "valid_from": "2020-09-01",
+      "valid_to": "2100-12-31"
+    },
+    {
+      "abbreviation": "R10",
+      "code": "10",
+      "mark": "R10",
+      "name": "Praha – Hradec Králové – Trutnov / Letohrad",
+      "valid_from": "2020-09-01",
+      "valid_to": "2026-12-12"
+    }
+  ],
+  "schema_version": 1,
+  "train_types": [
+    {
+      "abbreviation": "Os",
+      "code": "11"
+    },
+    {
+      "abbreviation": "Os",
+      "code": "11"
+    }
+  ]
+}

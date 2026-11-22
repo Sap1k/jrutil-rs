@@ -1,0 +1,33 @@
+{
+  "bundle_format": "jrutil-production",
+  "bundle_version": 3,
+  "serving_schema_version": "5.2",
+  "diagnostics_schema_version": 1,
+  "identity_contract": "jrutil-identity-v1",
+  "required_files": [
+    "gtfs.zip",
+    "serving/<relation>.parquet",
+    "manifest.json",
+    "diagnostics.json"
+  ],
+  "inventory_policy": "closed",
+  "gtfs_representation": "zip-only",
+  "diagnostics": {
+    "production_summary": "bounded",
+    "detailed_artifact": "explicit-output-only"
+  },
+  "determinism": {
+    "zip_entry_timestamp": "1980-01-01T00:00:00Z",
+    "zip_entry_order": "ordinal-name",
+    "csv_encoding": "utf-8-no-bom",
+    "csv_line_ending": "LF",
+    "parquet_row_group_maximum": 65536,
+    "manifest_self_hash": false
+  },
+  "compatibility": {
+    "regional_overlay_bundle_v1": false,
+    "regional_overlay_bundle_v2": false,
+    "obehy_serving_v1": false,
+    "jrutil_production_bundle_v2": false
+  }
+}

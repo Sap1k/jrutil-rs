@@ -1,0 +1,81 @@
+# Constants of the CZPTT rail compiler (crates/jr-czptt, docs/rules/czptt.md).
+# Every value here belongs to a named rule; the rule IDs are given per section.
+
+# CZPTT-R011, Q1: the published form of a PA/TR identifier, `<type>:<company>:<core>:<variant>:<year>`.
+[identifiers]
+path_object_type = "Pa"
+train_object_type = "Tr"
+
+# CZPTT-R002: CZPTTCreation / CZPTTCancelation without an offset are local times in this zone.
+[ordering]
+naive_timestamp_zone = "Europe/Prague"
+
+# CZPTT-R116, Q2: the GVD window is widened so that runs moved by R066 keep their dates.
+[horizon]
+days_before = 1
+days_after = 1
+
+# CZPTT-R013, R015, R065: BitmapDays characters.
+[calendar]
+running_day = "1"
+not_running_day = "0"
+
+# CZPTT-R081: `<prefix><newest CZPTTCreation, local reading, in this strftime format>`.
+[source_version]
+prefix = "czptt:"
+format = "%Y%m%dT%H%M%S"
+
+# CZPTT-R027: the Timing qualifiers that are read; others are diagnosed and ignored.
+[timing]
+arrival_qualifier = "ALA"
+departure_qualifier = "ALD"
+
+# CZPTT-R029, R030, Q7: TrainActivityType codes.
+[activities]
+passenger = "0001"
+embark_only = "0028"
+disembark_only = "0029"
+request_stop = "0030"
+unpublished_stop = "CZ13"
+# Every code the CZPTT standard defines; any other code is diagnosed (R030).
+known = [
+    "0001", "0002", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033",
+    "0035", "0040", "0043", "0044", "CZ01", "CZ02", "CZ03", "CZ04", "CZ05", "CZ13",
+]
+
+# CZPTT-R031–R037: NetworkSpecificParameter names and the values that set a flag.
+[parameters]
+line = "CZPassengerServiceNumber"
+replacement_bus = "CZAlternativeTransport"
+replacement_bus_value = "1"
+inconsistent_time = "CZInconsistentTime"
+inconsistent_time_value = "1"
+
+# CZPTT-R034: the category of a train before any location names one.
+[category]
+default_label = "Vlak"
+
+# CZPTT-R035, R045: GTFS extended route types.
+[route_types]
+default = 100
+replacement_bus = 714
+
+[[route_types.classes]]
+route_type = 102
+categories = ["IC", "EC", "RJ", "rj", "LE", "SC", "AEx"]
+
+[[route_types.classes]]
+route_type = 103
+categories = ["R", "Ex", "Rx"]
+
+[[route_types.classes]]
+route_type = 106
+categories = ["Os", "Sp", "TL", "TLX", "LET"]
+
+[[route_types.classes]]
+route_type = 105
+categories = ["NJ", "EN", "ES"]
+
+# CZPTT-R043, R047: the fewest calls a path or a replacement-bus part may have.
+[parts]
+minimum_calls = 2

@@ -1,0 +1,17 @@
+[package]
+name = "jr-model"
+description = "The canonical timetable model: IDs, service time, date sets, the tables, edits and their application. No I/O."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+jiff.workspace = true
+serde.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true
