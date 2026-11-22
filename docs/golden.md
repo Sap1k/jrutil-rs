@@ -69,8 +69,20 @@ contains; the production file names operators it does not): `<root>/jdf/out/fs-r
 lines in three queries), the 12 routes, 125 trips, 1,071 stop times and 272 stops are
 identical.
 
-Still to come on this slice: the post estimator (`bundle-posts`) and the regional overlay
-(`overlay`).
+### Overlay and post estimator references
+
+Both are F# runs on the registry-numbered chain, made once (2026-11-22):
+
+- **Overlay:** `regional-gtfs-overlay` with the production policy on `bundle-reg` (the base
+  without estimated posts) → `<root>/jdf/out/fs-ref/overlay-reg` and `overlay-reg-diagnostics`
+  (with traces). 234 s, 6.8 GB peak; 102,965 matched and 13,651 unmatched source trips.
+- **Post estimator:** `<root>/jdf/reference-posts.ps1`: `fix-jdf` with post candidates,
+  `merge-jdf` with the registry, a capture of the evidence pack
+  (`<root>/jdf/out/fs-ref/posts-evidence`, 192 s) and the live package with the learned scorer
+  (`bundle-posts-reg` and its diagnostics, 206 s): 10,171 estimated posts, 14,804 weak or
+  unresolved contexts. The routing extract is the demand-clipped file of the last national run
+  (`work/osm/jdf-transit-routing-demand.osm.pbf`): F# accepts only a file with that manifest,
+  and both compilers read the same one.
 
 ## Rules
 
