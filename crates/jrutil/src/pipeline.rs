@@ -18,7 +18,7 @@ use rayon::prelude::*;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
-use crate::spec::{CzpttSpec, FilteredSpec, JdfSpec, OverlaySpec, ShapesSpec};
+use crate::spec::{CzpttSpec, FilteredSpec, JdfSpec, OverlaySpec, PostsSpec, ShapesSpec};
 use crate::{companion, load};
 
 /// The stop-name synonym table, shared by every road name matcher.
@@ -81,6 +81,12 @@ pub enum BuildError {
     Filtered(#[from] jr_jdf::filtered::FilterError),
     #[error(transparent)]
     Overlay(#[from] jr_overlay::OverlayError),
+    #[error(transparent)]
+    Posts(#[from] jr_posts::EstimateError),
+    #[error("post estimator policy: {0}")]
+    PostPolicy(String),
+    #[error("post evidence pack: {0}")]
+    PostEvidence(String),
     #[error("no overlay source profile is named {0}")]
     UnknownProfile(String),
     #[error("cannot write {path}: {source}")]
@@ -432,6 +438,21 @@ pub fn jdf(spec: &JdfSpec) -> Result<(), BuildError> {
     let mut timetable = assembled.timetable;
     stages.done("assemble");
 
+    let mut estimated_posts = None;
+    if let Some(posts) = &spec.posts {
+        let summary = estimate_posts(
+            &mut timetable,
+            &assembled.post_facts,
+            posts,
+            spec.registry.as_deref(),
+            &digest_of_lines(&inputs),
+            &precedence,
+            &mut diagnostics,
+            &mut stages,
+        )?;
+        estimated_posts = Some(summary);
+    }
+
     let (edits, mut route_presentation) =
         presentation::route_presentation(&timetable, &sources.presentation, &mut diagnostics)?;
     pass(&mut timetable, edits, &precedence, &mut diagnostics)?;
@@ -497,15 +518,19 @@ pub fn jdf(spec: &JdfSpec) -> Result<(), BuildError> {
         },
         approximate_suffix: publish.approximate_suffix,
         gtfs_timed_transfers_as_stop_pairs: publish.gtfs_timed_transfers_as_stop_pairs,
-        extra_sections: vec![
-            ("road_merge".to_owned(), merge_section),
-            ("road".to_owned(), section(&assembled.summary)),
-            (
+        extra_sections: [
+            Some(("road_merge".to_owned(), merge_section)),
+            Some(("road".to_owned(), section(&assembled.summary))),
+            estimated_posts.map(|summary| ("estimated_posts".to_owned(), summary)),
+            Some((
                 "route_presentation".to_owned(),
                 section(&route_presentation),
-            ),
-            ("route_stop_order".to_owned(), section(&route_stop_order)),
-        ],
+            )),
+            Some(("route_stop_order".to_owned(), section(&route_stop_order))),
+        ]
+        .into_iter()
+        .flatten()
+        .collect(),
         // A batch that could not be read is missing lines (JDF-R004).
         publication_eligible: unreadable_batches == 0,
     };
@@ -531,6 +556,111 @@ pub fn jdf(spec: &JdfSpec) -> Result<(), BuildError> {
             &precedence,
         )?;
         stages.done("filtered feed");
+    }
+    Ok(())
+}
+
+/// Boarding posts estimated for the road timetable: the routing graph is built from the
+/// extract, the estimator returns edits, the evidence and review reports. Returns the summary
+/// for diagnostics.json.
+#[allow(clippy::too_many_arguments)]
+fn estimate_posts(
+    timetable: &mut Timetable,
+    facts: &jr_jdf::assemble::PostFacts,
+    spec: &PostsSpec,
+    registry: Option<&Path>,
+    inputs_digest: &str,
+    precedence: &Precedence,
+    diagnostics: &mut Diagnostics,
+    stages: &mut Stages,
+) -> Result<serde_json::Value, BuildError> {
+    use jr_formats::post_evidence::{self, PackIdentity, RouterEvidence};
+
+    let routing = jr_geo::routing::RoutingPolicy::builtin();
+    let document = load::posts::policy(&spec.policy)?;
+    let policy = jr_posts::evaluate::EvaluationPolicy::from_document(&document)
+        .map_err(|error| BuildError::PostPolicy(error.to_string()))?;
+    let registry_posts = match registry {
+        Some(directory) => load::posts::registry_posts(directory)?,
+        None => Vec::new(),
+    };
+    let (graph, routing_sha256) = load::posts::graph(&spec.routing, &routing)?;
+    stages.done("routing graph");
+
+    let estimated = jr_posts::estimate(
+        jr_posts::EstimateInput {
+            timetable,
+            facts,
+            graph: &graph,
+            routing: &routing,
+            policy: &policy,
+            registry: &registry_posts,
+            identity: PackIdentity {
+                capture_tool_version: compiler_version().to_owned(),
+                merged_jdf_sha256: inputs_digest.to_owned(),
+                routing_pbf_sha256: routing_sha256,
+                source_id: "national-jdf".to_owned(),
+                router: RouterEvidence::Rust,
+            },
+        },
+        diagnostics,
+    )?;
+    drop(graph);
+    pass(timetable, estimated.edits, precedence, diagnostics)?;
+
+    let io = |path: &Path| {
+        let path = path.display().to_string();
+        move |source| BuildError::Write { path, source }
+    };
+    if let (Some(directory), Some(pack)) = (&spec.evidence, &estimated.pack) {
+        if directory.exists() {
+            return Err(io(directory)(std::io::Error::other(
+                "the evidence directory exists",
+            )));
+        }
+        let files = post_evidence::write(pack)
+            .map_err(|error| BuildError::PostEvidence(error.to_string()))?;
+        std::fs::create_dir_all(directory).map_err(io(directory))?;
+        let contents = [
+            &files.manifest,
+            &files.observations,
+            &files.route_points,
+            &files.contexts,
+            &files.corridor_variants,
+            &files.route_point_evidence,
+        ];
+        for (name, bytes) in post_evidence::FILES.iter().zip(contents) {
+            let path = directory.join(name);
+            std::fs::write(&path, bytes).map_err(io(&path))?;
+        }
+    }
+    if let Some(directory) = &spec.reports {
+        write_reports(directory, &estimated.reports)?;
+    }
+    stages.done("post estimator");
+    Ok(section(&estimated.summary))
+}
+
+/// Review reports, one CSV each, in a directory.
+fn write_reports(directory: &Path, reports: &[jr_model::ReportTable]) -> Result<(), BuildError> {
+    let io = |path: &Path| {
+        let path = path.display().to_string();
+        move |source| BuildError::Write { path, source }
+    };
+    std::fs::create_dir_all(directory).map_err(io(directory))?;
+    for report in reports {
+        let path = directory.join(format!("{}.csv", report.name));
+        let write = || -> Result<(), csv::Error> {
+            let mut writer = csv::WriterBuilder::new()
+                .terminator(csv::Terminator::Any(b'\n'))
+                .from_path(&path)?;
+            writer.write_record(&report.header)?;
+            for row in &report.rows {
+                writer.write_record(row)?;
+            }
+            Ok(writer.flush()?)
+        };
+        write().map_err(|error| io(&path)(std::io::Error::other(error)))?;
     }
     Ok(())
 }
@@ -595,25 +725,7 @@ fn regional_overlay(
     pass(timetable, overlaid.edits, precedence, diagnostics)?;
 
     if let Some(directory) = &spec.reports {
-        let io = |path: &Path| {
-            let path = path.display().to_string();
-            move |source| BuildError::Write { path, source }
-        };
-        std::fs::create_dir_all(directory).map_err(io(directory))?;
-        for report in &overlaid.reports {
-            let path = directory.join(format!("{}.csv", report.name));
-            let write = || -> Result<(), csv::Error> {
-                let mut writer = csv::WriterBuilder::new()
-                    .terminator(csv::Terminator::Any(b'\n'))
-                    .from_path(&path)?;
-                writer.write_record(&report.header)?;
-                for row in &report.rows {
-                    writer.write_record(row)?;
-                }
-                Ok(writer.flush()?)
-            };
-            write().map_err(|error| io(&path)(std::io::Error::other(error)))?;
-        }
+        write_reports(directory, &overlaid.reports)?;
     }
     Ok(digests)
 }

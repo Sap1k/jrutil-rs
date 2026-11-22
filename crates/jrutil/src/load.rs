@@ -5,6 +5,7 @@ pub mod czptt;
 pub mod gtfs;
 pub mod jdf;
 pub mod osm;
+pub mod posts;
 
 use std::path::PathBuf;
 

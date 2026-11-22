@@ -11,6 +11,7 @@ publish.workspace = true
 jr-model.workspace = true
 jr-geo.workspace = true
 jr-formats.workspace = true
+jr-jdf.workspace = true
 rayon.workspace = true
 serde.workspace = true
 thiserror.workspace = true

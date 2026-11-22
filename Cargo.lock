@@ -772,6 +772,7 @@ version = "0.1.0"
 dependencies = [
  "jr-formats",
  "jr-geo",
+ "jr-jdf",
  "jr-model",
  "rayon",
  "serde",
@@ -813,6 +814,7 @@ dependencies = [
  "jr-jdf",
  "jr-model",
  "jr-overlay",
+ "jr-posts",
  "jr-publish",
  "rayon",
  "serde",

@@ -26,6 +26,12 @@
 //! output = "out/jdf"
 //! registry_candidates = "out/stop-candidates.csv"   # optional
 //!
+//! [jdf.posts]                           # optional: estimate boarding posts
+//! routing = "osm/jdf-transit-routing-demand.osm.pbf"
+//! policy = "post-inference/learned-v1.json"
+//! evidence = "out/posts-evidence"       # optional: write the evidence pack
+//! reports = "out/posts-reports"         # optional: the review reports, one CSV each
+//!
 //! [jdf.overlay]                         # optional: regional feeds overlaid on the road timetable
 //! reports = "out/overlay-reports"       # optional: the review reports, one CSV each
 //!
@@ -80,6 +86,21 @@ pub struct JdfSpec {
     pub filtered: Option<FilteredSpec>,
     /// Regional feeds overlaid on the road timetable before it is published.
     pub overlay: Option<OverlaySpec>,
+    /// Boarding-post estimation; none without it.
+    pub posts: Option<PostsSpec>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PostsSpec {
+    /// The road and tram OSM extract the estimator routes on.
+    pub routing: PathBuf,
+    /// The policy document with the scorer.
+    pub policy: PathBuf,
+    /// A directory for the evidence pack; it must not exist.
+    pub evidence: Option<PathBuf>,
+    /// A directory for the review reports.
+    pub reports: Option<PathBuf>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -194,6 +215,16 @@ impl BuildSpec {
             .flatten()
             {
                 *target = base.join(&*target);
+            }
+            if let Some(posts) = &mut jdf.posts {
+                posts.routing = base.join(&posts.routing);
+                posts.policy = base.join(&posts.policy);
+                for target in [posts.evidence.as_mut(), posts.reports.as_mut()]
+                    .into_iter()
+                    .flatten()
+                {
+                    *target = base.join(&*target);
+                }
             }
             if let Some(overlay) = &mut jdf.overlay {
                 if let Some(reports) = &mut overlay.reports {

@@ -14,6 +14,7 @@ mod keys;
 mod lines;
 mod places;
 mod policy;
+mod post_facts;
 mod semantics;
 
 use std::collections::BTreeMap;
@@ -24,6 +25,7 @@ use jr_model::{Diagnostics, Feed, Rule, Severity, Timetable};
 use serde::Serialize;
 
 pub use policy::Policy;
+pub use post_facts::PostFacts;
 
 use crate::merge::Merged;
 
@@ -114,6 +116,8 @@ pub struct Assembled {
     /// One per line version, in the merge's order: what the filtered feed's line selection
     /// reads and the timetable does not carry.
     pub lines: Vec<crate::filtered::LineVersion>,
+    /// What the boarding-post estimator reads and the timetable does not carry.
+    pub post_facts: PostFacts,
     pub summary: Summary,
 }
 
@@ -233,6 +237,7 @@ pub fn assemble(
     Ok(Assembled {
         timetable,
         lines,
+        post_facts: PostFacts::default(),
         summary,
     })
 }

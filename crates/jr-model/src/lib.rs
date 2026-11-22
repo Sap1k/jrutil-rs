@@ -20,6 +20,7 @@ pub mod edit;
 pub mod geo;
 pub mod handle;
 pub mod identity;
+pub mod report;
 pub mod text;
 pub mod time;
 pub mod timetable;
@@ -33,6 +34,7 @@ pub use handle::{
     Table, TripId, ZoneSetId,
 };
 pub use identity::{Feed, PublicId};
+pub use report::ReportTable;
 pub use text::Strings;
 pub use time::{Date, Horizon, OptTime, ServiceTime};
 pub use timetable::Timetable;
