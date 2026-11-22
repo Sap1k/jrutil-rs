@@ -7,7 +7,7 @@ use jr_formats::jdf::{self, Header, Km, NoteType, RouteType, TimeCell, Version};
 use jr_geo::names::{Analyzer, Profile};
 use jr_jdf::batch::{self, Batch};
 use jr_jdf::fixed::{FixedBatch, FixedStop, Location, Origin, PostCandidate};
-use jr_jdf::merge::{self, MergeInput, Merged, Registry};
+use jr_jdf::merge::{self, MergeContext, Merged, Registry};
 use jr_model::{Coord, Diagnostics};
 
 /// The stop-identity profile with the shipped synonym table.
@@ -363,8 +363,8 @@ pub fn merge_at(
     let jdf = jr_jdf::Policy::builtin();
     let mut diagnostics = Diagnostics::new();
     let merged = merge::merge(
-        MergeInput {
-            batches,
+        batches,
+        MergeContext {
             registry,
             names: &names,
             jdf: &jdf,

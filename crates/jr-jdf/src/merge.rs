@@ -97,6 +97,8 @@ pub enum MergeError {
     },
     #[error("two batches are named {0}")]
     DuplicateBatch(Box<str>),
+    #[error("batch {batch} was added after {previous}: batches are merged in name order")]
+    OutOfOrder { batch: Box<str>, previous: Box<str> },
     #[error("batch {batch}: {stops} stops but {fixed} fixed stops")]
     StopCount {
         batch: Box<str>,
@@ -105,10 +107,9 @@ pub enum MergeError {
     },
 }
 
-/// What the merge reads.
-#[derive(Debug)]
-pub struct MergeInput<'a> {
-    pub batches: Vec<FixedBatch>,
+/// What the merge reads besides the batches.
+#[derive(Clone, Copy, Debug)]
+pub struct MergeContext<'a> {
     pub registry: &'a Registry,
     /// The stop-identity name profile (`data/names/road_names.toml` `[identity]` with the
     /// synonym table; JDF-R214, R215).
@@ -359,126 +360,190 @@ impl CodeSets {
     }
 }
 
-/// Merges the fixed batches (R207–R254).
-pub fn merge(
-    input: MergeInput<'_>,
-    policy: &Policy,
-    diagnostics: &mut Diagnostics,
-) -> Result<Merged, MergeError> {
-    let horizon =
-        Horizon::gvd(input.timetable_year).map_err(|_| MergeError::Year(input.timetable_year))?;
-    if !horizon.contains(input.reference_date) {
-        return Err(MergeError::ReferenceDate {
-            date: input.reference_date,
-            year: input.timetable_year,
-            start: horizon.start(),
-            end: horizon.end(),
-        });
+/// The merge in progress: batches are added one at a time in ordinal order of their names (the
+/// stated order of every "first" in the rules), so a caller can match batches' stops in
+/// parallel, in bounded groups, and hand each over as soon as its turn comes. What a batch
+/// contributes is kept in the merged form only; the batch itself is dropped.
+pub struct Merger<'a> {
+    context: MergeContext<'a>,
+    horizon: Horizon,
+    stops: stops::Stops<'a>,
+    agencies: assemble::Agencies,
+    code_sets: CodeSets,
+    texts: Strings,
+    versions: Vec<Version>,
+    last: Option<Box<str>>,
+}
+
+impl std::fmt::Debug for Merger<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Merger")
+            .field("last", &self.last)
+            .field("versions", &self.versions.len())
+            .finish_non_exhaustive()
     }
-    let mut batches = input.batches;
-    batches.sort_by(|a, b| a.batch.name.cmp(&b.batch.name));
-    for pair in batches.windows(2) {
-        if pair[0].batch.name == pair[1].batch.name {
-            return Err(MergeError::DuplicateBatch(pair[0].batch.name.clone()));
+}
+
+impl<'a> Merger<'a> {
+    pub fn new(context: MergeContext<'a>, policy: &'a Policy) -> Result<Merger<'a>, MergeError> {
+        let year = context.timetable_year;
+        let horizon = Horizon::gvd(year).map_err(|_| MergeError::Year(year))?;
+        if !horizon.contains(context.reference_date) {
+            return Err(MergeError::ReferenceDate {
+                date: context.reference_date,
+                year,
+                start: horizon.start(),
+                end: horizon.end(),
+            });
         }
+        Ok(Merger {
+            stops: stops::Stops::new(&context.registry.rows, context.names, policy),
+            context,
+            horizon,
+            agencies: assemble::Agencies::default(),
+            code_sets: CodeSets::default(),
+            texts: Strings::new(),
+            versions: Vec::new(),
+            last: None,
+        })
     }
-    for fixed in &batches {
+
+    /// Reconciles the batch's stops and takes its line versions (R207–R242).
+    pub fn add(
+        &mut self,
+        fixed: FixedBatch,
+        diagnostics: &mut Diagnostics,
+    ) -> Result<(), MergeError> {
+        let name = &fixed.batch.name;
+        match &self.last {
+            Some(previous) if previous == name => {
+                return Err(MergeError::DuplicateBatch(name.clone()));
+            }
+            Some(previous) if previous > name => {
+                return Err(MergeError::OutOfOrder {
+                    batch: name.clone(),
+                    previous: previous.clone(),
+                });
+            }
+            _ => self.last = Some(name.clone()),
+        }
         if fixed.stops.len() != fixed.batch.stops.len() {
             return Err(MergeError::StopCount {
-                batch: fixed.batch.name.clone(),
+                batch: name.clone(),
                 stops: fixed.batch.stops.len(),
                 fixed: fixed.stops.len(),
             });
         }
-    }
-
-    let mut stops = stops::Stops::new(&input.registry.rows, input.names, policy);
-    let mut agencies = assemble::Agencies::default();
-    let mut code_sets = CodeSets::default();
-    let mut texts = Strings::new();
-    let mut versions = Vec::new();
-    for fixed in batches {
-        let map = stops.add_batch(&fixed, diagnostics);
+        let map = self.stops.add_batch(&fixed, diagnostics);
         let mut position = HashMap::with_capacity(fixed.batch.stops.len());
         for (at, stop) in fixed.batch.stops.iter().enumerate() {
             position.entry(stop.id).or_insert(at);
         }
-        let unknown_posts = stops.add_posts(&fixed, &map, &position, diagnostics);
+        let unknown_posts = self.stops.add_posts(&fixed, &map, &position, diagnostics);
         let mut context = assemble::Context {
             stop_map: &map,
             stop_position: &position,
-            agencies: &mut agencies,
-            code_sets: &mut code_sets,
-            texts: &mut texts,
-            jdf: input.jdf,
+            agencies: &mut self.agencies,
+            code_sets: &mut self.code_sets,
+            texts: &mut self.texts,
+            jdf: self.context.jdf,
             unknown_posts,
         };
-        assemble::add_batch(fixed.batch, &mut context, &mut versions, diagnostics);
+        assemble::add_batch(fixed.batch, &mut context, &mut self.versions, diagnostics);
+        Ok(())
     }
 
-    let holidays = crate::holidays::Holidays::new(input.jdf, horizon);
-    let versions = versions::resolve(
-        versions,
-        horizon,
-        input.reference_date,
-        &holidays,
-        &code_sets,
-        input.jdf,
-        diagnostics,
-    );
+    /// Decides which dates each version wins and each trip runs (R243–R264), numbers the
+    /// stops and drops what nothing uses (R284).
+    pub fn finish(self, diagnostics: &mut Diagnostics) -> Merged {
+        let Merger {
+            context,
+            horizon,
+            stops,
+            agencies,
+            mut code_sets,
+            texts,
+            versions,
+            last: _,
+        } = self;
+        let holidays = crate::holidays::Holidays::new(context.jdf, horizon);
+        let mut versions = versions::resolve(
+            versions,
+            horizon,
+            context.reference_date,
+            &holidays,
+            &code_sets,
+            context.jdf,
+            diagnostics,
+        );
 
-    // Every draft stop in number order, then what no version uses goes (R284).
-    let mut order: Vec<usize> = (0..stops.drafts.len()).collect();
-    order.sort_by_key(|&index| stops.drafts[index].number);
-    let mut final_index = vec![0u32; stops.drafts.len()];
-    for (position, &index) in order.iter().enumerate() {
-        final_index[index] = position as u32;
-    }
-    let merged_stops: Vec<Stop> = order
-        .iter()
-        .map(|&index| {
-            let draft = &stops.drafts[index];
-            Stop {
-                number: draft.number,
-                provisional: draft.provisional,
-                name: draft.name.clone(),
-                location: draft.location.clone(),
-                codes: stops::Stops::code_set(draft, &mut code_sets),
-                post_candidates: draft.post_candidates.values().cloned().collect(),
-                posts: draft.posts.values().cloned().collect(),
-            }
-        })
-        .collect();
-    let mut versions = versions;
-    for version in &mut versions {
-        for route_stop in &mut version.route_stops {
-            route_stop.stop = final_index[route_stop.stop as usize];
+        // Every draft stop in number order, then what no version uses goes (R284).
+        let mut order: Vec<usize> = (0..stops.drafts.len()).collect();
+        order.sort_by_key(|&index| stops.drafts[index].number);
+        let mut final_index = vec![0u32; stops.drafts.len()];
+        for (position, &index) in order.iter().enumerate() {
+            final_index[index] = position as u32;
         }
-        for trip in &mut version.trips {
-            for call in &mut trip.calls {
-                call.stop = final_index[call.stop as usize];
+        let merged_stops: Vec<Stop> = order
+            .iter()
+            .map(|&index| {
+                let draft = &stops.drafts[index];
+                Stop {
+                    number: draft.number,
+                    provisional: draft.provisional,
+                    name: draft.name.clone(),
+                    location: draft.location.clone(),
+                    codes: stops::Stops::code_set(draft, &mut code_sets),
+                    post_candidates: draft.post_candidates.values().cloned().collect(),
+                    posts: draft.posts.values().cloned().collect(),
+                }
+            })
+            .collect();
+        for version in &mut versions {
+            for route_stop in &mut version.route_stops {
+                route_stop.stop = final_index[route_stop.stop as usize];
+            }
+            for trip in &mut version.trips {
+                for call in &mut trip.calls {
+                    call.stop = final_index[call.stop as usize];
+                }
             }
         }
+        let mut merged = Merged {
+            horizon,
+            reference_date: context.reference_date,
+            stops: merged_stops,
+            agencies: agencies.rows,
+            versions,
+            registry_candidates: Vec::new(),
+            code_sets,
+            texts,
+            statistics: stops.statistics(),
+        };
+        filter::prune(&mut merged, diagnostics);
+        let surviving: std::collections::HashSet<u64> =
+            merged.stops.iter().map(|stop| stop.number).collect();
+        let kept: Vec<bool> = stops
+            .drafts
+            .iter()
+            .map(|draft| surviving.contains(&draft.number))
+            .collect();
+        merged.registry_candidates = stops.candidates(&kept);
+        merged
     }
-    let mut merged = Merged {
-        horizon,
-        reference_date: input.reference_date,
-        stops: merged_stops,
-        agencies: agencies.rows,
-        versions,
-        registry_candidates: Vec::new(),
-        code_sets,
-        texts,
-        statistics: stops.statistics(),
-    };
-    filter::prune(&mut merged, diagnostics);
-    let surviving: std::collections::HashSet<u64> =
-        merged.stops.iter().map(|stop| stop.number).collect();
-    let kept: Vec<bool> = stops
-        .drafts
-        .iter()
-        .map(|draft| surviving.contains(&draft.number))
-        .collect();
-    merged.registry_candidates = stops.candidates(&kept);
-    Ok(merged)
+}
+
+/// Merges fixed batches held together (R207–R254): they are taken in name order.
+pub fn merge(
+    mut batches: Vec<FixedBatch>,
+    context: MergeContext<'_>,
+    policy: &Policy,
+    diagnostics: &mut Diagnostics,
+) -> Result<Merged, MergeError> {
+    batches.sort_by(|a, b| a.batch.name.cmp(&b.batch.name));
+    let mut merger = Merger::new(context, policy)?;
+    for fixed in batches {
+        merger.add(fixed, diagnostics)?;
+    }
+    Ok(merger.finish(diagnostics))
 }

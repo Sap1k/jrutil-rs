@@ -1,9 +1,10 @@
 //! Reading the road compiler's inputs from disk.
 //!
 //! Batches are one ZIP each in a directory and are named after their file (without `.zip`):
-//! the name is the export's own identifier and the compiler's stated order. A batch that cannot
-//! be decoded is still returned, with the reason: dropping it is the compiler's decision
-//! (JDF-R004). The stop catalogues are the CSV files below a directory, in ordinal order of
+//! the name is the export's own identifier and the compiler's stated order. They are listed
+//! here and read one by one when the pipeline asks ([`read_batch`]), so the build never holds
+//! them all as read. A batch that cannot be decoded is still returned, with the reason:
+//! dropping it is the compiler's decision (JDF-R004). The stop catalogues are the CSV files below a directory, in ordinal order of
 //! their relative paths (JDF-R005). Every file read is listed with its SHA-256: together they
 //! are the identity of the build's inputs.
 
@@ -27,16 +28,35 @@ const REGISTRY_STOPS: &str = "stops.csv";
 const TRANSPORT_MODES: &str = "transport-modes.csv";
 const PRESENTATION: &str = "presentation.csv";
 
+/// A batch on disk.
+#[derive(Debug, Clone)]
+pub struct BatchFile {
+    pub name: String,
+    pub path: PathBuf,
+}
+
+/// A batch as read, and its place in the list of inputs.
 #[derive(Debug)]
 pub struct LoadedBatch {
-    pub name: String,
     pub read: Result<jdf::Read, JdfError>,
+    /// `(batches/<name>.zip, SHA-256)`.
+    pub input: (String, String),
+}
+
+/// Reads and decodes one batch.
+pub fn read_batch(file: &BatchFile) -> Result<LoadedBatch, LoadError> {
+    let bytes = read(&file.path)?;
+    let input = (format!("batches/{}.zip", file.name), sha256(&bytes));
+    Ok(LoadedBatch {
+        read: jdf::read_zip(Cursor::new(bytes)),
+        input,
+    })
 }
 
 #[derive(Debug)]
 pub struct Sources {
     /// In name order.
-    pub batches: Vec<LoadedBatch>,
+    pub batches: Vec<BatchFile>,
     /// `(path below the catalogue directory with / separators, rows)`, in path order.
     pub catalogues: Vec<(String, Vec<catalogue::Row>)>,
     pub osm_nodes: Vec<Node>,
@@ -46,30 +66,21 @@ pub struct Sources {
     pub registry: Option<Vec<registry::Stop>>,
     pub transport_modes: Vec<route_rules::TransportModeRule>,
     pub presentation: Vec<route_rules::PresentationRule>,
-    /// `(group/relative path, SHA-256)` of every file read, sorted.
+    /// `(group/relative path, SHA-256)` of every file read here: all but the batches.
     pub inputs: Vec<(String, String)>,
 }
 
 pub fn load(spec: &JdfSpec) -> Result<Sources, LoadError> {
     let mut inputs = Vec::new();
 
-    let batch_files = files_below(&spec.batches, "zip", false)?;
-    let batches: Vec<(LoadedBatch, String)> = batch_files
-        .par_iter()
-        .map(|(name, path)| {
-            let bytes = read(path)?;
-            let digest = sha256(&bytes);
-            let name = name.strip_suffix(".zip").unwrap_or(name).to_owned();
-            let read = jdf::read_zip(Cursor::new(bytes));
-            Ok((LoadedBatch { name, read }, digest))
+    let mut batches: Vec<BatchFile> = files_below(&spec.batches, "zip", false)?
+        .into_iter()
+        .map(|(name, path)| BatchFile {
+            name: name[..name.len() - ".zip".len()].to_owned(),
+            path,
         })
-        .collect::<Result<_, LoadError>>()?;
-    let mut loaded = Vec::with_capacity(batches.len());
-    for (batch, digest) in batches {
-        inputs.push((format!("batches/{}.zip", batch.name), digest));
-        loaded.push(batch);
-    }
-    loaded.sort_by(|a, b| a.name.cmp(&b.name));
+        .collect();
+    batches.sort_by(|a, b| a.name.cmp(&b.name));
 
     let catalogue_files = if spec.catalogues.is_file() {
         let name = spec
@@ -142,10 +153,9 @@ pub fn load(spec: &JdfSpec) -> Result<Sources, LoadError> {
 
     let (osm_nodes, osm_digest) = osm_nodes(&spec.osm)?;
     inputs.push(("osm".to_owned(), osm_digest));
-    inputs.sort();
 
     Ok(Sources {
-        batches: loaded,
+        batches,
         catalogues,
         osm_nodes,
         okresy,

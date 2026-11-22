@@ -116,6 +116,11 @@ const JDF_POLICIES: &[&str] = &[
     "publish.toml",
 ];
 
+/// How many batches have their stops matched ahead of the merge. The merge takes batches one
+/// at a time in name order; matching runs in parallel on a group of them. The size bounds what
+/// is held as read and does not change the result.
+const JDF_BATCH_GROUP: usize = 128;
+
 /// The version recorded in every manifest: the release tag or commit the binary was built
 /// from when the build supplies one, else the crate version.
 pub fn compiler_version() -> &'static str {
@@ -296,38 +301,13 @@ pub fn jdf(spec: &JdfSpec) -> Result<(), BuildError> {
     );
     stages.done("stop evidence");
 
-    // Each batch on its own; the results are taken in batch-name order.
-    let batch_count = sources.batches.len();
-    let per_batch: Vec<_> = sources
-        .batches
-        .into_par_iter()
-        .map(|loaded| {
-            let mut found = Diagnostics::new();
-            let unreadable = loaded.read.is_err();
-            let fixed = jr_jdf::source::admit(&loaded.name, loaded.read, &jdf_policy, &mut found)
-                .and_then(|batch| fix::fix(batch, &evidence, &fix_policy, &mut found));
-            (fixed, found, unreadable)
-        })
-        .collect();
-    drop(evidence);
-    let mut fixed = Vec::with_capacity(batch_count);
-    let mut unreadable_batches = 0usize;
-    for (batch, found, unreadable) in per_batch {
-        diagnostics.append(found);
-        fixed.extend(batch);
-        unreadable_batches += usize::from(unreadable);
-    }
-    let matched_batches = fixed.len();
-    stages.done("stop matching");
-
     let merge_policy = merge::Policy::builtin();
     let registry = match &sources.registry {
         Some(stops) => merge::Registry::new(stops, &merge_policy, &mut diagnostics),
         None => merge::Registry::empty(),
     };
-    let mut merged = merge::merge(
-        merge::MergeInput {
-            batches: fixed,
+    let mut merger = merge::Merger::new(
+        merge::MergeContext {
             registry: &registry,
             names: &identity_names,
             jdf: &jdf_policy,
@@ -335,10 +315,43 @@ pub fn jdf(spec: &JdfSpec) -> Result<(), BuildError> {
             reference_date: spec.reference_date,
         },
         &merge_policy,
-        &mut diagnostics,
     )?;
+
+    // A group of batches is read and has its stops matched in parallel, each batch on its
+    // own; the merge then takes them in name order.
+    let batch_count = sources.batches.len();
+    let mut inputs = sources.inputs;
+    let mut unreadable_batches = 0usize;
+    let mut matched_batches = 0usize;
+    for group in sources.batches.chunks(JDF_BATCH_GROUP) {
+        let matched: Vec<_> = group
+            .par_iter()
+            .map(|file| {
+                let loaded = load::jdf::read_batch(file)?;
+                let mut found = Diagnostics::new();
+                let unreadable = loaded.read.is_err();
+                let fixed = jr_jdf::source::admit(&file.name, loaded.read, &jdf_policy, &mut found)
+                    .and_then(|batch| fix::fix(batch, &evidence, &fix_policy, &mut found));
+                Ok((fixed, found, unreadable, loaded.input))
+            })
+            .collect::<Result<_, load::LoadError>>()?;
+        for (fixed, found, unreadable, input) in matched {
+            diagnostics.append(found);
+            inputs.push(input);
+            unreadable_batches += usize::from(unreadable);
+            if let Some(fixed) = fixed {
+                matched_batches += 1;
+                merger.add(fixed, &mut diagnostics)?;
+            }
+        }
+    }
+    drop(evidence);
+    inputs.sort();
+    stages.done("read batches, match stops, merge");
+
+    let mut merged = merger.finish(&mut diagnostics);
     let filtered = merge::apply_international(&mut merged, &jdf_policy, &mut diagnostics);
-    stages.done("merge");
+    stages.done("line versions and calendars");
 
     if let Some(path) = &spec.registry_candidates {
         write_registry_candidates(path, &merged.registry_candidates).map_err(|source| {
@@ -390,7 +403,7 @@ pub fn jdf(spec: &JdfSpec) -> Result<(), BuildError> {
     stages.done("presentation and route stops");
 
     let publish: PublishPolicy = policy("publish.toml");
-    let inputs_digest = digest_of_lines(&sources.inputs);
+    let inputs_digest = digest_of_lines(&inputs);
     let options = PublishOptions {
         compiler_version: compiler_version().to_owned(),
         build_spec_sha256: build_spec_sha256(
