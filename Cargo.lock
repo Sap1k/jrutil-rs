@@ -698,14 +698,18 @@ dependencies = [
 name = "jr-formats"
 version = "0.1.0"
 dependencies = [
+ "arrow-array",
+ "arrow-schema",
  "csv",
  "encoding_rs",
  "flate2",
  "jiff",
  "jr-model",
+ "parquet",
  "quick-xml",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror",
  "zip",
 ]
@@ -752,14 +756,24 @@ dependencies = [
  "jr-formats",
  "jr-geo",
  "jr-model",
+ "rayon",
+ "serde",
+ "sha2",
+ "thiserror",
+ "toml",
 ]
 
 [[package]]
 name = "jr-posts"
 version = "0.1.0"
 dependencies = [
+ "jr-formats",
  "jr-geo",
  "jr-model",
+ "rayon",
+ "serde",
+ "thiserror",
+ "toml",
 ]
 
 [[package]]

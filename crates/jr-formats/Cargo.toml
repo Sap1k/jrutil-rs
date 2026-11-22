@@ -18,6 +18,11 @@ csv.workspace = true
 quick-xml.workspace = true
 flate2.workspace = true
 encoding_rs.workspace = true
+# The post evidence pack is Parquet.
+arrow-array.workspace = true
+arrow-schema.workspace = true
+parquet.workspace = true
+sha2.workspace = true
 
 [lints]
 workspace = true
