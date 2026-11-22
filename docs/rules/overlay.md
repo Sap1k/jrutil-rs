@@ -50,6 +50,56 @@ Sources read in full:
   `diagnostics.json`, the file list of `overlay-diagnostics/`, and the timings in
   `work/overlay-golden/perf/*.json`.
 
+## Architect's verdicts
+
+**These override the "Proposed verdict" lines below.** Where a rule is not listed, its proposed
+verdict stands. Rule IDs in the Rust code are the IDs of this file.
+
+The overlay is ported in two steps, and this file rules on the first. **Step one is a parity
+port of what the F# overlay decides**, in the rewrite's shape: one engine over the `Timetable`,
+sources described by profiles, the result returned as edits. Its output is compared with the F#
+overlay on the golden slice (`out/fs-ref/overlay-reg`), trips matched by schedule where the IDs
+differ. Changes of what the overlay decides (a one-to-one trip assignment, zones scoped to their
+tariff, authored thresholds per source) are made afterwards, one at a time, each measured on the
+same slice. Only defects that lose service or publish something false are fixed in step one.
+
+| Q | Decision |
+|---|---|
+| Q1 | Port the F# matching (R065–R076): nearest candidate per date, the availability pass, no time limit. B1 is recorded as the first change to make after the switch. |
+| Q2 | Each source has its own profile and is governed by it. The profiles shipped with the rewrite state the values that are effective today (PID with the 25 m / 10 m coordinate tier and the union of capabilities and tiers), so step one decides as F# does and the files say what really applies. The merged template (R011, R022) is not built. |
+| Q3 | Fix B23: a quarantined conflict on an owned line-date keeps the national trip on that date, as the diagnostic says. Ledgered. |
+| Q4 | New edits: `SplitTrip` (a copy of a trip under a new ID and service, with everything stated for the trip), `ReplaceTripCalls` (the whole call list, with the map from old to new sequences so what was stated for a call follows it), `SetTripRoute`, `SetTripHeadsign`. Call zones travel with the calls. |
+| Q5 | Change once. Services are `identity::service`. A slice is `<base trip>:overlay:<12 hex of its date set>`; an added trip `overlay:<source>:trip:<20 hex of source trip and date set>`, the date set being `DateSet::to_bytes`. Posts, routes, agencies and stop places keep their F# form: they are keyed on source identifiers and the registry. |
+| Q6 | The registry's `group_key` is built exactly as today, in `identity::overlay`. Migrating the file is a separate change with the registry tooling. |
+| Q7 | Port (R062 with its maximum and exclusions as profile data). |
+| Q8 | The facts of the base the engine relies on (after-midnight fold, mode compatibility, detour preference, the estimated-stop correction, CIS lines, integrated systems) come from a base profile, so a rail base can supply its own. |
+| Q9 | Mappings are not written: source keys and call keys carry them. The review reports (`stop_group_matches`, `unmatched_trip_reasons`, `headsigns`, candidate scores, coverage) are returned as typed tables and written by the CLI as a diagnostics artifact. The manifest lists each source with its payload, descriptor and profile hashes (fixes B3). Unpublished `cz_*` markers are dropped. |
+| Q10 | Port (place-level zones for every call at the place). B6 is recorded as a change to make after the switch. |
+| Q11 | A source whose data cannot be used (bad `api.txt`, agencies, references) is left out with an error diagnostic and the package is not eligible for publication; the build continues. A checksum or profile error stays fatal. |
+| Q12 | Headsigns are a capability of the profile; the shipped profiles grant it where F# applied it (authority slices). |
+| Q13 | Fix B4: a coordinate the overlay replaced is `CoordSource::Overlay`, exact. Ledgered. |
+| Q14 | Source shapes are not ported (R110 dropped; off in production). |
+| Q15 | Port (`trip_equivalent_tie_expanded`). |
+
+Further:
+
+- There is no combined input, no compiler view and no intermediate GTFS (R012, R021–R024,
+  R093–R106 as file writers, R111, R119 mappings): the engine reads the base `Timetable` and each
+  source's `jr_formats::gtfs::Feed`, and returns edits. What those stages decided is kept as
+  rules of the stage that now decides it.
+- Source quirks (R015–R020) are named hooks of a profile, selected by the profile and not by an
+  adapter name in code: the revision in a trip ID, the stop group and post key columns, the
+  companion CIS-line join, the operational crosswalk, the integrated-system scopes.
+- The approximate-stop marker (R026) is `Position.precision`, never a name suffix.
+- B8 cannot occur: what is stated for a call follows the call through `ReplaceTripCalls`.
+- B12: the synonym table is the one data file every name matcher shares (`data/names/`).
+- B18: a capability naming an unknown tier is a profile error.
+- The validations of the base package (R002, twice) are the publisher's check of what the build
+  itself wrote; the overlay does not validate its input timetable again.
+- Determinism (R124) and memory (R125): no scratch directory, no forced collections.
+
+---
+
 ## Summary
 
 1. The command takes a finished national road package (the "base"), an overlay-all policy naming

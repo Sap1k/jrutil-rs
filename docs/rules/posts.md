@@ -58,6 +58,50 @@ Ground truth: **there is no golden output with estimation on.** The golden bundl
 and tests; no count is quoted from real data except the registry file (57,237 `est:` rows, all
 `active`, no `post:` rows).
 
+## Architect's verdicts
+
+**These override the "Proposed verdict" lines below.** Where a rule is not listed, its proposed
+verdict stands. Rule IDs in the Rust code are the IDs of this file.
+
+The bar, as decided for the rewrite: the evidence-v2 pack and the learned scorer's model format
+stay; the router is written anew; the estimator is judged by the share of calls that get the
+same boarding point as with F#, and by labelled accuracy, not by identical evidence rows. The
+port does not change what the estimator decides from given evidence: the evaluator is proven
+first, on packs F# captured, where it must decide exactly as F# did.
+
+| Q | Decision |
+|---|---|
+| Q1 | Format-compatible, not byte-compatible. Same relations, columns and meaning; identifiers that come out of the router follow the Rust router. `router_evidence_version` is bumped so a Rust pack is never taken for an F# one. The reader accepts both. |
+| Q2 | `f64` in the router. Differences at exact ties are ledgered. |
+| Q3 | Port the graph as F# builds it, B5, B6 and B7 included. Each is fixed after the switch with a recapture and a labelled-accuracy comparison. |
+| Q4 | Port the heuristic whole (R080–R088). It runs where the policy document names it and for authored posts (R122). |
+| Q5 | Port (B11 stays until the switch). |
+| Q6 | Port: an `Area` decision is published as an estimated post; the diagnostics count them. |
+| Q7 | Port: a stop with one observed position is not estimated. |
+| Q8 | In memory. The five relations are typed tables built and evaluated in memory; Parquet is written only on request (capture) and read only to evaluate a given pack. A test asserts that a pack written and read back gives the same decisions. |
+| Q9 | The pack keeps `jdf:stop:<N>`; the number is read back only by the pack reader in `jr-formats`, as part of the format. In memory the tables carry the stop number. |
+| Q10 | Contexts come from published trips only: a trip that never runs is not in the timetable. Ledgered. |
+| Q11 | Port the pack statistic (R101) for the switch: the shipped model was trained with it. A reviewed list is a change to make with the next model. |
+| Q12 | One decisions table (context, chosen hypothesis, its observations, kind, scores) plus counts per rule, as a diagnostics artifact. |
+| Q13 | A retired ordinal is never matched or issued again. |
+| Q14 | The Rust evaluator's features are pinned by a fixture built from an F# pack and the Python candidate table. Producing the training table from Rust is a later extension. |
+| Q15 | Port for the switch (an estimated post is published with its stop's coordinate source and precision); a source of its own needs a contract minor and comes after. Recorded as a limitation. |
+
+Further:
+
+- The estimator is a pass: it reads the road timetable, the post candidates the merge kept per
+  stop, the routing graph and the policy, and returns edits (boarding points, their positions,
+  the calls' boarding points). Nothing is parsed out of an ID; the pass is handed stop numbers
+  and authored post keys as fields.
+- The dead router paths (R024) are not ported, nor the tests that pin only them.
+- B3 cannot occur: a missing lookup is a diagnostic.
+- The routing cache (R056) is the stage cache's business, keyed as today; the first port may run
+  without it and measure.
+- Execution modes: `disabled`, `capture` (write the pack, publish no estimates), `evaluate` (a
+  given pack), `live`.
+
+---
+
 ## How the estimator works, end to end
 
 1. Stop matching (`fix-jdf`) attaches to each matched stop the raw observations near it (OSM stop
