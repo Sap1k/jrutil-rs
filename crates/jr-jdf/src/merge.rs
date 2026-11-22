@@ -16,7 +16,7 @@ mod registry;
 mod stops;
 mod versions;
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use jr_formats::jdf::{Km, TimeCell};
 use jr_geo::names::Analyzer;
@@ -105,6 +105,14 @@ pub enum MergeError {
         stops: usize,
         fixed: usize,
     },
+    #[error("batch {0} has no surviving trip: its calls are not wanted")]
+    Unwanted(Box<str>),
+    #[error("the calls of batch {0} were given twice")]
+    CallsTwice(Box<str>),
+    #[error("the calls of batch {0} were not given")]
+    MissingCalls(Box<str>),
+    #[error("batch {0} read for its calls differs from the batch merged")]
+    Changed(Box<str>),
 }
 
 /// What the merge reads besides the batches.
@@ -344,6 +352,12 @@ impl CodeSets {
     /// The empty set.
     pub const EMPTY: CodeSetId = CodeSetId(0);
 
+    /// The handle of an interned list.
+    pub fn find<'s>(&self, codes: impl IntoIterator<Item = &'s str>) -> Option<CodeSetId> {
+        let key: Box<[Box<str>]> = codes.into_iter().map(Box::from).collect();
+        self.index.get(&key).copied()
+    }
+
     pub fn intern<'s>(&mut self, codes: impl IntoIterator<Item = &'s str>) -> CodeSetId {
         let key: Box<[Box<str>]> = codes.into_iter().map(Box::from).collect();
         if let Some(&id) = self.index.get(&key) {
@@ -360,10 +374,13 @@ impl CodeSets {
     }
 }
 
-/// The merge in progress: batches are added one at a time in ordinal order of their names (the
+/// Pass 1 of the merge: batches are added one at a time in ordinal order of their names (the
 /// stated order of every "first" in the rules), so a caller can match batches' stops in
 /// parallel, in bounded groups, and hand each over as soon as its turn comes. What a batch
-/// contributes is kept in the merged form only; the batch itself is dropped.
+/// contributes is kept in the merged form only, without its calls: which versions win and when
+/// trips run (R243–R267) never read calls, and most calls belong to versions that lose.
+/// [`Merger::resolve`] decides; pass 2 ([`Resolved::add_calls`]) takes the batches that still
+/// have a published trip again for their calls.
 pub struct Merger<'a> {
     context: MergeContext<'a>,
     horizon: Horizon,
@@ -372,6 +389,7 @@ pub struct Merger<'a> {
     code_sets: CodeSets,
     texts: Strings,
     versions: Vec<Version>,
+    placements: BTreeMap<Box<str>, assemble::Placement>,
     last: Option<Box<str>>,
 }
 
@@ -404,24 +422,26 @@ impl<'a> Merger<'a> {
             code_sets: CodeSets::default(),
             texts: Strings::new(),
             versions: Vec::new(),
+            placements: BTreeMap::new(),
             last: None,
         })
     }
 
-    /// Reconciles the batch's stops and takes its line versions (R207–R242).
+    /// Reconciles the batch's stops and takes its line versions (R207–R242); its calls are
+    /// dropped.
     pub fn add(
         &mut self,
         fixed: FixedBatch,
         diagnostics: &mut Diagnostics,
     ) -> Result<(), MergeError> {
-        let name = &fixed.batch.name;
+        let name = fixed.batch.name.clone();
         match &self.last {
-            Some(previous) if previous == name => {
-                return Err(MergeError::DuplicateBatch(name.clone()));
+            Some(previous) if *previous == name => {
+                return Err(MergeError::DuplicateBatch(name));
             }
-            Some(previous) if previous > name => {
+            Some(previous) if *previous > name => {
                 return Err(MergeError::OutOfOrder {
-                    batch: name.clone(),
+                    batch: name,
                     previous: previous.clone(),
                 });
             }
@@ -429,7 +449,7 @@ impl<'a> Merger<'a> {
         }
         if fixed.stops.len() != fixed.batch.stops.len() {
             return Err(MergeError::StopCount {
-                batch: name.clone(),
+                batch: name,
                 stops: fixed.batch.stops.len(),
                 fixed: fixed.stops.len(),
             });
@@ -449,25 +469,28 @@ impl<'a> Merger<'a> {
             jdf: self.context.jdf,
             unknown_posts,
         };
-        assemble::add_batch(fixed.batch, &mut context, &mut self.versions, diagnostics);
+        let placement =
+            assemble::add_batch(fixed.batch, &mut context, &mut self.versions, diagnostics);
+        self.placements.insert(name, placement);
         Ok(())
     }
 
-    /// Decides which dates each version wins and each trip runs (R243–R264), numbers the
-    /// stops and drops what nothing uses (R284).
-    pub fn finish(self, diagnostics: &mut Diagnostics) -> Merged {
+    /// Decides which dates each version wins and each trip runs (R243–R267), and which batches
+    /// still have a published trip.
+    pub fn resolve(self, diagnostics: &mut Diagnostics) -> Resolved<'a> {
         let Merger {
             context,
             horizon,
             stops,
             agencies,
-            mut code_sets,
+            code_sets,
             texts,
             versions,
+            mut placements,
             last: _,
         } = self;
         let holidays = crate::holidays::Holidays::new(context.jdf, horizon);
-        let mut versions = versions::resolve(
+        let survivors = versions::resolve(
             versions,
             horizon,
             context.reference_date,
@@ -476,6 +499,111 @@ impl<'a> Merger<'a> {
             context.jdf,
             diagnostics,
         );
+        let mut wanted = BTreeSet::new();
+        for (name, placement) in &mut placements {
+            for (&(version, _), (trip, target)) in &mut placement.trips {
+                *target = survivors.versions_map[version].and_then(|survivor| {
+                    survivors.trips_map[survivor][*trip].map(|kept| (survivor, kept))
+                });
+                if target.is_some() {
+                    wanted.insert(name.clone());
+                }
+            }
+        }
+        // A batch with no published trip is not read again; its unplaceable calls are reported
+        // from the first read.
+        placements.retain(|name, placement| {
+            let keep = wanted.contains(name);
+            if !keep {
+                assemble::report_unknown_calls(name, placement, diagnostics);
+            }
+            keep
+        });
+        Resolved {
+            context,
+            horizon,
+            stops,
+            agencies,
+            code_sets,
+            texts,
+            versions: survivors.versions,
+            placements,
+            wanted,
+        }
+    }
+}
+
+/// The resolved merge waiting for the calls of the batches with a published trip (pass 2).
+pub struct Resolved<'a> {
+    context: MergeContext<'a>,
+    horizon: Horizon,
+    stops: stops::Stops<'a>,
+    agencies: assemble::Agencies,
+    code_sets: CodeSets,
+    texts: Strings,
+    versions: Vec<Version>,
+    /// The wanted batches whose calls are not placed yet.
+    placements: BTreeMap<Box<str>, assemble::Placement>,
+    wanted: BTreeSet<Box<str>>,
+}
+
+impl std::fmt::Debug for Resolved<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Resolved")
+            .field("versions", &self.versions.len())
+            .field("pending", &self.placements.len())
+            .finish_non_exhaustive()
+    }
+}
+
+impl Resolved<'_> {
+    /// The batches that still have a published trip, in name order.
+    pub fn wanted(&self) -> impl Iterator<Item = &str> {
+        self.wanted.iter().map(|name| &**name)
+    }
+
+    /// Places the calls of a wanted batch's surviving trips (R241, R285), in any batch order;
+    /// the batch is the one merged, read again (without stop matching).
+    pub fn add_calls(
+        &mut self,
+        batch: crate::batch::Batch,
+        diagnostics: &mut Diagnostics,
+    ) -> Result<(), MergeError> {
+        let name = batch.name.clone();
+        let Some(placement) = self.placements.remove(&name) else {
+            return Err(if self.wanted.contains(&name) {
+                MergeError::CallsTwice(name)
+            } else {
+                MergeError::Unwanted(name)
+            });
+        };
+        assemble::place_calls(
+            &batch,
+            &placement,
+            &self.code_sets,
+            &self.texts,
+            &mut self.versions,
+            diagnostics,
+        )
+        .ok_or(MergeError::Changed(name))
+    }
+
+    /// Numbers the stops, drops what nothing uses (R284) and lists the registry candidates.
+    pub fn finish(self, diagnostics: &mut Diagnostics) -> Result<Merged, MergeError> {
+        let Resolved {
+            context,
+            horizon,
+            stops,
+            agencies,
+            mut code_sets,
+            texts,
+            mut versions,
+            placements,
+            wanted: _,
+        } = self;
+        if let Some(name) = placements.into_keys().next() {
+            return Err(MergeError::MissingCalls(name));
+        }
 
         // Every draft stop in number order, then what no version uses goes (R284).
         let mut order: Vec<usize> = (0..stops.drafts.len()).collect();
@@ -529,11 +657,12 @@ impl<'a> Merger<'a> {
             .map(|draft| surviving.contains(&draft.number))
             .collect();
         merged.registry_candidates = stops.candidates(&kept);
-        merged
+        Ok(merged)
     }
 }
 
-/// Merges fixed batches held together (R207–R254): they are taken in name order.
+/// Merges fixed batches held together (R207–R254) through both passes: they are taken in name
+/// order, and each wanted batch's calls are placed from a copy kept aside.
 pub fn merge(
     mut batches: Vec<FixedBatch>,
     context: MergeContext<'_>,
@@ -542,8 +671,17 @@ pub fn merge(
 ) -> Result<Merged, MergeError> {
     batches.sort_by(|a, b| a.batch.name.cmp(&b.batch.name));
     let mut merger = Merger::new(context, policy)?;
+    let mut kept = BTreeMap::new();
     for fixed in batches {
+        kept.insert(fixed.batch.name.clone(), fixed.batch.clone());
         merger.add(fixed, diagnostics)?;
     }
-    Ok(merger.finish(diagnostics))
+    let mut resolved = merger.resolve(diagnostics);
+    let wanted: Vec<Box<str>> = resolved.wanted().map(Box::from).collect();
+    for name in wanted {
+        if let Some(batch) = kept.remove(&name) {
+            resolved.add_calls(batch, diagnostics)?;
+        }
+    }
+    resolved.finish(diagnostics)
 }

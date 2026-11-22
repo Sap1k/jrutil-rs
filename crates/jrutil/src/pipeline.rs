@@ -18,7 +18,7 @@ use rayon::prelude::*;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
-use crate::spec::{CzpttSpec, JdfSpec, ShapesSpec};
+use crate::spec::{CzpttSpec, FilteredSpec, JdfSpec, ShapesSpec};
 use crate::{companion, load};
 
 /// The stop-name synonym table, shared by every road name matcher.
@@ -77,6 +77,8 @@ pub enum BuildError {
     Assemble(#[from] assemble::AssembleError),
     #[error(transparent)]
     Presentation(#[from] presentation::Tie),
+    #[error(transparent)]
+    Filtered(#[from] jr_jdf::filtered::FilterError),
     #[error("cannot write {path}: {source}")]
     Write {
         path: String,
@@ -347,11 +349,42 @@ pub fn jdf(spec: &JdfSpec) -> Result<(), BuildError> {
     }
     drop(evidence);
     inputs.sort();
-    stages.done("read batches, match stops, merge");
+    stages.done("read batches, match stops, merge (pass 1)");
 
-    let mut merged = merger.finish(&mut diagnostics);
-    let filtered = merge::apply_international(&mut merged, &jdf_policy, &mut diagnostics);
+    let mut resolved = merger.resolve(&mut diagnostics);
     stages.done("line versions and calendars");
+
+    // Pass 2: the batches that still have a published trip are read again for their calls. The
+    // admission was reported in pass 1, and the input digests recorded there.
+    let wanted: Vec<&load::jdf::BatchFile> = {
+        let names: std::collections::BTreeSet<&str> = resolved.wanted().collect();
+        sources
+            .batches
+            .iter()
+            .filter(|file| names.contains(file.name.as_str()))
+            .collect()
+    };
+    for group in wanted.chunks(JDF_BATCH_GROUP) {
+        let read: Vec<_> = group
+            .par_iter()
+            .map(|file| {
+                let loaded = load::jdf::read_batch(file)?;
+                let mut reported = Diagnostics::new();
+                Ok(jr_jdf::source::admit(
+                    &file.name,
+                    loaded.read,
+                    &jdf_policy,
+                    &mut reported,
+                ))
+            })
+            .collect::<Result<_, load::LoadError>>()?;
+        for batch in read.into_iter().flatten() {
+            resolved.add_calls(batch, &mut diagnostics)?;
+        }
+    }
+    let mut merged = resolved.finish(&mut diagnostics)?;
+    let filtered = merge::apply_international(&mut merged, &jdf_policy, &mut diagnostics);
+    stages.done("place calls (pass 2), international filter");
 
     if let Some(path) = &spec.registry_candidates {
         write_registry_candidates(path, &merged.registry_candidates).map_err(|source| {
@@ -450,6 +483,81 @@ pub fn jdf(spec: &JdfSpec) -> Result<(), BuildError> {
 
     check(&spec.output)?;
     stages.done("validate");
+
+    if let Some(filtered) = &spec.filtered {
+        filtered_feed(
+            timetable,
+            &assembled.lines,
+            filtered,
+            spec.reference_date,
+            &options,
+            &precedence,
+        )?;
+        stages.done("filtered feed");
+    }
+    Ok(())
+}
+
+/// The filtered road feed: the published road timetable without the lines other feeds publish
+/// and without calls at unplaced stops, as GTFS, with the line selection and the counts.
+fn filtered_feed(
+    mut timetable: Timetable,
+    lines: &[jr_jdf::filtered::LineVersion],
+    spec: &FilteredSpec,
+    reference: jr_model::Date,
+    options: &PublishOptions,
+    precedence: &Precedence,
+) -> Result<(), BuildError> {
+    let (rules, rules_sha256) = load::jdf::filter_rules(&spec.rules)?;
+    let filtered = jr_jdf::filtered::filtered_feed(&timetable, lines, &rules, reference)?;
+    let mut diagnostics = Diagnostics::new();
+    pass(&mut timetable, filtered.edits, precedence, &mut diagnostics)?;
+    // The route stops are those of the trips and calls that remain.
+    let (edits, _) = route_stops::route_stops(&timetable);
+    pass(&mut timetable, edits, precedence, &mut diagnostics)?;
+
+    let io = |path: &Path| {
+        let path = path.display().to_string();
+        move |source| BuildError::Write { path, source }
+    };
+    if spec.output.exists() {
+        return Err(io(&spec.output)(std::io::Error::other(
+            "the output directory exists",
+        )));
+    }
+    std::fs::create_dir_all(&spec.output).map_err(io(&spec.output))?;
+    let gtfs = spec.output.join("gtfs.zip");
+    jr_publish::write::write_gtfs(&timetable, options, &gtfs)?;
+    let (gtfs_sha256, gtfs_bytes) = load::jdf::written(&gtfs)?;
+
+    let json = |value: &serde_json::Value| {
+        let mut text = serde_json::to_string_pretty(value).expect("plain data");
+        text.push('\n');
+        text
+    };
+    let snapshot = serde_json::json!({
+        "schema_version": 3,
+        "source": "jdf-linext",
+        "reference_date": reference.to_string(),
+        "queries": filtered.queries,
+    });
+    let snapshot_path = spec.output.join("line-snapshot.json");
+    std::fs::write(&snapshot_path, json(&snapshot)).map_err(io(&snapshot_path))?;
+    let mut report = serde_json::json!({
+        "schema_version": 3,
+        "rules": {
+            "path": spec.rules.file_name().map(|name| name.to_string_lossy()),
+            "sha256": rules_sha256,
+        },
+        "gtfs": { "bytes": gtfs_bytes, "sha256": gtfs_sha256 },
+    });
+    if let (Some(report), serde_json::Value::Object(counts)) =
+        (report.as_object_mut(), section(&filtered.report))
+    {
+        report.extend(counts);
+    }
+    let report_path = spec.output.join("filter-report.json");
+    std::fs::write(&report_path, json(&report)).map_err(io(&report_path))?;
     Ok(())
 }
 

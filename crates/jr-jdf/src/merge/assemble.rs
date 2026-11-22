@@ -110,13 +110,34 @@ impl Unknown {
     }
 }
 
-/// Adds one batch's versions and relations (in batch order) to `versions`.
+/// A pass-1 trip index and, after the resolution, its surviving (version, trip).
+pub(crate) type TripTarget = (usize, Option<(usize, u32)>);
+
+/// Where a batch's calls go, kept from pass 1 until its calls are placed (pass 2).
+#[derive(Debug, Default)]
+pub(crate) struct Placement {
+    /// Batch stop position to draft stop.
+    pub stop_map: Vec<u32>,
+    /// The versions pass 1 took, by their batch-local key, to their pass-1 index.
+    pub versions: HashMap<(Box<str>, u32), usize>,
+    /// The trips pass 1 took, by (pass-1 version, trip number), to their pass-1 index; after the
+    /// resolution, to their surviving (version, trip) or `None`.
+    pub trips: HashMap<(usize, u64), TripTarget>,
+    /// Calls that name a version, trip or stop the batch does not have (R285), counted in
+    /// pass 1 for a batch whose calls turn out not to be wanted.
+    pub unknown_calls: Vec<(&'static str, usize)>,
+}
+
+/// Adds one batch's versions and relations (in batch order) to `versions`. The calls are not
+/// kept (pass 2 places those of surviving trips, [`place_calls`]); their fixed-code sets and
+/// texts are interned here, in the order they always were, so handles do not depend on which
+/// trips survive. Returns what placing the calls needs.
 pub(crate) fn add_batch(
     batch: Batch,
     context: &mut Context<'_>,
     versions: &mut Vec<Version>,
     diagnostics: &mut Diagnostics,
-) {
+) -> Placement {
     let Batch {
         name,
         header,
@@ -267,32 +288,22 @@ pub(crate) fn add_batch(
             calls: Vec::new(),
         });
     }
-    for row in trip_stops {
+    let mut unknown_calls = Unknown::default();
+    for row in &trip_stops {
         let Some(v) = version_of(&row.route_id, row.route_distinction) else {
-            unknown.add("Zasspoje", "version");
+            unknown_calls.add("Zasspoje", "version");
             continue;
         };
-        let Some(&t) = trip_index.get(&(v, row.trip_id)) else {
-            unknown.add("Zasspoje", "trip");
+        if !trip_index.contains_key(&(v, row.trip_id)) {
+            unknown_calls.add("Zasspoje", "trip");
             continue;
-        };
-        let Some(stop) = stop_of(row.stop_id) else {
-            unknown.add("Zasspoje", "stop");
+        }
+        if stop_of(row.stop_id).is_none() {
+            unknown_calls.add("Zasspoje", "stop");
             continue;
-        };
-        let call = Call {
-            stop,
-            codes: code_set(&row.attributes, context.code_sets),
-            route_stop_id: row.route_stop_id,
-            stop_post_id: row.stop_post_id,
-            stop_post_number: context.texts.intern_opt(row.stop_post_number.as_deref()),
-            km: row.km,
-            arrival: row.arrival,
-            departure: row.departure,
-            earliest_arrival: row.earliest_arrival,
-            latest_departure: row.latest_departure,
-        };
-        versions[v].trips[t].calls.push(call);
+        }
+        code_set(&row.attributes, context.code_sets);
+        context.texts.intern_opt(row.stop_post_number.as_deref());
     }
     for row in route_info {
         match version_of(&row.route_id, row.route_distinction) {
@@ -365,4 +376,114 @@ pub(crate) fn add_batch(
             .rule(R285),
         );
     }
+    Placement {
+        stop_map: context.stop_map.iter().map(|&d| d as u32).collect(),
+        versions: by_key,
+        trips: trip_index
+            .into_iter()
+            .map(|(key, trip)| (key, (trip, None)))
+            .collect(),
+        unknown_calls: unknown_calls
+            .0
+            .into_iter()
+            .map(|((_, missing), count)| (missing, count))
+            .collect(),
+    }
+}
+
+/// R285 for the calls of a batch whose calls are not wanted, from the pass-1 counts.
+pub(crate) fn report_unknown_calls(
+    name: &str,
+    placement: &Placement,
+    diagnostics: &mut Diagnostics,
+) {
+    let mut unknown = Unknown::default();
+    for &(missing, count) in &placement.unknown_calls {
+        *unknown.0.entry(("Zasspoje", missing)).or_default() += count;
+    }
+    report(name, unknown, diagnostics);
+}
+
+fn report(name: &str, unknown: Unknown, diagnostics: &mut Diagnostics) {
+    for ((relation, missing), count) in unknown.0 {
+        diagnostics.push(
+            Diagnostic::new(
+                "jdf_reference_unknown",
+                Severity::Warning,
+                name,
+                format!(
+                    "{count} {relation} rows name a {missing} the batch does not have: dropped"
+                ),
+            )
+            .rule(R285),
+        );
+    }
+}
+
+/// Pass 2 (R241): the calls of a batch's surviving trips, in file order, with the diagnostics of
+/// calls that cannot be placed. `None` when the batch is not the one pass 1 read.
+pub(crate) fn place_calls(
+    batch: &Batch,
+    placement: &Placement,
+    code_sets: &CodeSets,
+    texts: &Strings,
+    versions: &mut [Version],
+    diagnostics: &mut Diagnostics,
+) -> Option<()> {
+    if placement.stop_map.len() != batch.stops.len() {
+        return None;
+    }
+    let codes = AttributeCodes::new(&batch.attribute_refs);
+    let mut position: HashMap<u64, usize> = HashMap::with_capacity(batch.stops.len());
+    for (at, stop) in batch.stops.iter().enumerate() {
+        position.entry(stop.id).or_insert(at);
+    }
+    let mut slot_sets: HashMap<[Option<u32>; 3], CodeSetId> = HashMap::new();
+    let mut unknown = Unknown::default();
+    for row in &batch.trip_stops {
+        let Some(&v) = placement
+            .versions
+            .get(&(row.route_id.clone(), row.route_distinction))
+        else {
+            unknown.add("Zasspoje", "version");
+            continue;
+        };
+        let Some(&(_, target)) = placement.trips.get(&(v, row.trip_id)) else {
+            unknown.add("Zasspoje", "trip");
+            continue;
+        };
+        let Some(&at) = position.get(&row.stop_id) else {
+            unknown.add("Zasspoje", "stop");
+            continue;
+        };
+        let Some((version, trip)) = target else {
+            continue;
+        };
+        let codes = match slot_sets.get(&row.attributes) {
+            Some(&id) => id,
+            None => {
+                let id = code_sets.find(codes.resolve(&row.attributes))?;
+                slot_sets.insert(row.attributes, id);
+                id
+            }
+        };
+        let stop_post_number = match row.stop_post_number.as_deref().filter(|t| !t.is_empty()) {
+            Some(text) => Some(texts.find(text)?),
+            None => None,
+        };
+        versions[version].trips[trip as usize].calls.push(Call {
+            stop: placement.stop_map[at],
+            codes,
+            route_stop_id: row.route_stop_id,
+            stop_post_id: row.stop_post_id,
+            stop_post_number,
+            km: row.km,
+            arrival: row.arrival,
+            departure: row.departure,
+            earliest_arrival: row.earliest_arrival,
+            latest_departure: row.latest_departure,
+        });
+    }
+    report(&batch.name, unknown, diagnostics);
+    Some(())
 }

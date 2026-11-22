@@ -12,7 +12,7 @@ use std::fs;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
-use jr_formats::geodata::{catalogue, gazetteer, registry, route_rules};
+use jr_formats::geodata::{catalogue, filter_rules, gazetteer, registry, route_rules};
 use jr_formats::jdf::{self, JdfError};
 use jr_formats::osm::Node;
 use rayon::prelude::*;
@@ -166,6 +166,19 @@ pub fn load(spec: &JdfSpec) -> Result<Sources, LoadError> {
         presentation,
         inputs,
     })
+}
+
+/// The filtered feed's rules and the file's SHA-256.
+pub fn filter_rules(path: &Path) -> Result<(filter_rules::FilterRules, String), LoadError> {
+    let bytes = read(path)?;
+    let rules = filter_rules::parse(&bytes).map_err(|error| invalid(path, error))?;
+    Ok((rules, sha256(&bytes)))
+}
+
+/// The SHA-256 and size of a file just written.
+pub fn written(path: &Path) -> Result<(String, u64), LoadError> {
+    let bytes = read(path)?;
+    Ok((sha256(&bytes), bytes.len() as u64))
 }
 
 /// The tagged nodes of the extract, in file order, and the file's SHA-256.

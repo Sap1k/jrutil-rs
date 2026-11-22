@@ -5,13 +5,13 @@
 //!
 //! - routes, agencies and shapes: those published trips use; route stops: those of published
 //!   routes;
-//! - transfers, assignments, source keys and call keys: those whose trips and routes are all
-//!   published (a key on a place always is, a key on a boarding point when the point is);
-//! - notes: those a published assignment links;
-//! - boarding points: a published call's `boarding_point`, a published transfer's endpoint or a
-//!   published `Scope::Location` (a point named only as a call's `track` is not a location);
-//! - places: those a published call, boarding point, route stop, transfer, assignment or key
-//!   names.
+//! - boarding points: a published call's `boarding_point` or a published transfer's endpoint (a
+//!   point named only as a call's `track` is not a location);
+//! - places: those a published call, boarding point, route stop or transfer names;
+//! - transfers, assignments, source keys and call keys: those whose trips, routes, places and
+//!   boarding points are all published. A feature or a key stated for a location does not keep
+//!   the location: when nothing calls there any more, they go with it;
+//! - notes: those a published assignment links.
 
 use jr_model::handle::Handle;
 use jr_model::timetable::{Entity, LocationRef, RestrictionScope, Scope, Trip};
@@ -86,22 +86,6 @@ impl<'t> Published<'t> {
                     && route_ok(row.to_route)
             })
             .collect();
-        let assignments: Vec<usize> = (0..t.assignments.len())
-            .filter(|&i| match t.assignments[i].scope {
-                Scope::Route(id) => route[id.index()],
-                Scope::Trip(id)
-                | Scope::Call { trip: id, .. }
-                | Scope::CallRange { trip: id, .. } => trip[id.index()],
-                Scope::Location(_) => true,
-            })
-            .collect();
-        let mut note = vec![false; t.notes.len()];
-        for &i in &assignments {
-            if let Some(id) = t.assignments[i].note {
-                note[id.index()] = true;
-            }
-        }
-
         let mut place = vec![false; t.places.len()];
         let mut boarding_point = vec![false; t.boarding_points.len()];
         let mut locate = |reference: LocationRef| match reference {
@@ -120,24 +104,31 @@ impl<'t> Published<'t> {
             let row = &t.transfers[i];
             row.from.into_iter().chain(row.to).for_each(&mut locate);
         }
-        for &i in &assignments {
-            if let Scope::Location(reference) = t.assignments[i].scope {
-                locate(reference);
-            }
-        }
         for (id, slot) in t.route_stops.iter() {
             if route_stop[id.index()] {
                 place[slot.place.index()] = true;
             }
         }
-        for row in &t.keys {
-            if let Entity::Place(id) = row.entity {
-                place[id.index()] = true;
-            }
-        }
         for (id, point) in t.boarding_points.iter() {
             if boarding_point[id.index()] {
                 place[point.place.index()] = true;
+            }
+        }
+
+        let assignments: Vec<usize> = (0..t.assignments.len())
+            .filter(|&i| match t.assignments[i].scope {
+                Scope::Route(id) => route[id.index()],
+                Scope::Trip(id)
+                | Scope::Call { trip: id, .. }
+                | Scope::CallRange { trip: id, .. } => trip[id.index()],
+                Scope::Location(LocationRef::Place(id)) => place[id.index()],
+                Scope::Location(LocationRef::BoardingPoint(id)) => boarding_point[id.index()],
+            })
+            .collect();
+        let mut note = vec![false; t.notes.len()];
+        for &i in &assignments {
+            if let Some(id) = t.assignments[i].note {
+                note[id.index()] = true;
             }
         }
 

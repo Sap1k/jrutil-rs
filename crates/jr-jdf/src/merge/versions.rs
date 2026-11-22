@@ -244,7 +244,7 @@ pub(crate) fn resolve(
     code_sets: &CodeSets,
     jdf: &crate::Policy,
     diagnostics: &mut Diagnostics,
-) -> Vec<Version> {
+) -> Survivors {
     let mut licences: BTreeMap<Box<str>, Vec<usize>> = BTreeMap::new();
     for (index, version) in versions.iter().enumerate() {
         licences
@@ -329,23 +329,42 @@ pub(crate) fn resolve(
         .copied()
         .filter(|&index| keep[index])
         .collect();
+    let mut versions_map = vec![None; versions.len()];
     let mut slots: Vec<Option<Version>> = versions.into_iter().map(Some).collect();
-    let mut survivors: Vec<Version> = order
-        .iter()
-        .filter_map(|&index| slots[index].take())
-        .collect();
+    let mut survivors: Vec<Version> = Vec::with_capacity(order.len());
+    for &index in &order {
+        if let Some(version) = slots[index].take() {
+            versions_map[index] = Some(survivors.len());
+            survivors.push(version);
+        }
+    }
 
     // R248 with R255–R267, per version in parallel, results and diagnostics in order.
-    let reports: Vec<Diagnostics> = survivors
+    let reports: Vec<(Diagnostics, Vec<Option<u32>>)> = survivors
         .par_iter_mut()
         .map(|version| calendars(version, horizon, holidays, code_sets, jdf))
         .collect();
-    for report in reports {
+    let mut trips_map = Vec::with_capacity(reports.len());
+    for (report, kept) in reports {
         diagnostics.append(report);
+        trips_map.push(kept);
     }
 
     keys(&mut survivors);
-    survivors
+    Survivors {
+        versions: survivors,
+        versions_map,
+        trips_map,
+    }
+}
+
+/// The surviving versions and where each version and trip of the input went.
+pub(crate) struct Survivors {
+    pub versions: Vec<Version>,
+    /// Input version index to survivor index.
+    pub versions_map: Vec<Option<usize>>,
+    /// Per survivor, input trip index to surviving trip index.
+    pub trips_map: Vec<Vec<Option<u32>>>,
 }
 
 fn ranges(intervals: &[(Date, Date)]) -> String {
@@ -364,7 +383,7 @@ fn calendars(
     holidays: &Holidays,
     code_sets: &CodeSets,
     jdf: &crate::Policy,
-) -> Diagnostics {
+) -> (Diagnostics, Vec<Option<u32>>) {
     let mut diagnostics = Diagnostics::new();
     let subject = version.subject();
     let mut notes: HashMap<u64, Vec<CalendarNote<'_>>> = HashMap::new();
@@ -397,8 +416,18 @@ fn calendars(
     for (trip, days) in version.trips.iter_mut().zip(days) {
         trip.days = days;
     }
+    let mut kept = Vec::with_capacity(version.trips.len());
+    let mut next = 0u32;
+    for trip in &version.trips {
+        if trip.days.is_empty() {
+            kept.push(None);
+        } else {
+            kept.push(Some(next));
+            next += 1;
+        }
+    }
     version.trips.retain(|trip| !trip.days.is_empty());
-    diagnostics
+    (diagnostics, kept)
 }
 
 /// R254 over the survivors (in licence, batch order).

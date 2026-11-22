@@ -50,17 +50,27 @@ are not the reference).
 ### Base package: reference and result (2026-11-22)
 
 F# JrUtil: `fix-jdf` 65 s (3.1 GB peak), `merge-jdf` 32 s, `jdf-to-bundle` 32 s: 129 s for
-92,705 trips and 1,901,717 calls. `jrutil build` on the same inputs: 17.9 s, 2.5 GB peak, the
+92,705 trips and 1,901,717 calls. `jrutil build` on the same inputs: 17 s, 0.95 GB peak, the
 whole chain in one process. `jrutil compare <root>/jdf/out/fs-ref/bundle-reg
 <root>/jdf/out/rs/package --expect parity/jdf.toml` passes: fifteen explained categories; every
 trip, call, time, calendar, route stop and zone is identical, as are the stop numbers and the
 registry candidates but one (a stop no published trip uses is no longer offered).
 
-The memory is above the target (half of F#'s peak): every batch is held as read, as fixed and
-as merged at once. To be reduced before the switch.
+Batches are read twice: once for stop matching and the merge of everything but the calls, and,
+for the batches that still have a running trip once the line versions are resolved, once more
+for their calls. The build therefore never holds the calls of versions that lose.
 
-Still to come on this slice: the post estimator (`bundle-posts`), the regional overlay
-(`overlay`), and the filtered JDF feed.
+### Filtered feed
+
+The reference is Oběhy's `build_filtered_jdf` run on the F# package and merged JDF with
+`<root>/jdf/filter-rules.json` (the production rules' shape with operators this slice
+contains; the production file names operators it does not): `<root>/jdf/out/fs-ref/filtered`.
+`jrutil build` writes `<root>/jdf/out/rs/filtered` from the same rules: the line selection (843
+lines in three queries), the 12 routes, 125 trips, 1,071 stop times and 272 stops are
+identical.
+
+Still to come on this slice: the post estimator (`bundle-posts`) and the regional overlay
+(`overlay`).
 
 ## Rules
 

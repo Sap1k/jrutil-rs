@@ -25,6 +25,10 @@
 //! reference_date = "2026-11-21"
 //! output = "out/jdf"
 //! registry_candidates = "out/stop-candidates.csv"   # optional
+//!
+//! [jdf.filtered]                        # optional: the road feed without other feeds' lines
+//! rules = "geodata/filtered-jdf/rules-v1.json"
+//! output = "out/jdf-filtered"           # gtfs.zip, line-snapshot.json, filter-report.json
 //! ```
 
 use std::path::{Path, PathBuf};
@@ -64,6 +68,18 @@ pub struct JdfSpec {
     pub output: PathBuf,
     /// Where to write what the stop registry is missing.
     pub registry_candidates: Option<PathBuf>,
+    /// The filtered road feed; not built without it.
+    pub filtered: Option<FilteredSpec>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FilteredSpec {
+    /// The reviewed rules naming the operators, integrated systems and line families other
+    /// feeds publish.
+    pub rules: PathBuf,
+    /// The directory to write; it must not exist.
+    pub output: PathBuf,
 }
 
 #[derive(Debug, Deserialize)]
@@ -149,6 +165,10 @@ impl BuildSpec {
             .flatten()
             {
                 *target = base.join(&*target);
+            }
+            if let Some(filtered) = &mut jdf.filtered {
+                filtered.rules = base.join(&filtered.rules);
+                filtered.output = base.join(&filtered.output);
             }
         }
         Ok(spec)
