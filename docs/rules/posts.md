@@ -111,7 +111,7 @@ Conventions:
 | 5 | Observations and route points | `batch.postCandidateEvidence` → admitted observations (300 m from the precise stop position), grouped into route points by exact coordinate | R030–R033 | `captureToStoreRestrictedWithCancellation` 429–489 |
 | 6 | Contexts | trips of Bus/Trolleybus/Tram routes, one per distinct (route, distinction, direction, pattern, authored keys), → work rows at stops with ≥ 2 route points, with previous/next anchor coordinates | R040–R047 | same, 490–599 |
 | 7 | Routing | distinct routing keys per (stop, mode) → routed evidence (≤ 3 corridor variants, attachments of every route point); cached across runs by routing key and graph-region digest; parallel FIFO workers merged by ordinal | R050–R057 | same, 600–760; `Osm.routeContextEvidence`; `JdfRoutingCache` |
-| 8 | Join and movement family | work rows × routed evidence → contexts (ordinal, movement family), variants, attachments | R055 | same, 761–851 |
+| 8 | Join and movement family | work rows × routed evidence → contexts (ordinal, movement family), variants, attachments | R054, R055 | same, 761–851 |
 | 9 | Pack write | five Parquet relations + `manifest.json` in a temp dir (live) or the capture dir; validated before activation | R060–R061 | `JdfBundleEvidence.writePostEvidenceStore` |
 | 10 | Pack open | full validation again (hashes, schemas, metadata, ordering, keys, sentinels, counts) | R061 | `JdfPostEvidenceStore.openValidatedStore` |
 | *capture-only stops here* | | | | |
@@ -289,7 +289,7 @@ distinction, direction, pattern, position, role, authored-or-"", context id) str
 | `pattern_hash` | string | no | R041 |
 | `pattern_position` | int | no | 0-based index among usable calls |
 | `same_stop_block_role` | string | no | `through`, `incoming`, `outgoing`, `interior` (R042) |
-| `movement_family_id` | string | no | R055 |
+| `movement_family_id` | string | no | R054 |
 | `context_previous_stop_id`, `context_next_stop_id` | string | yes | `jdf:stop:<N>` of the anchor stop (R045); null for `outgoing`/`interior` previous, `incoming`/`interior` next, or no anchor |
 | `assignment_kind` | string | no | `authored` iff `authored_post_key` set, else `unlabelled` |
 | `authored_post_key` | string | yes | `id:<n>` or `num:<text>` (R043) |
@@ -329,13 +329,13 @@ of the context's stop, in the stop's route-point order (coverage is checked).
 | `variant_rank` | int | no | |
 | `corridor_id` | string | yes | equal to the variant's |
 | `route_point_id` | string | no | |
-| `routed_excess_metres` | double | yes | R053, ≥ 0 |
+| `routed_excess_metres` | double | yes | R052, ≥ 0 |
 | `snap_edge_id` | int | yes | graph edge index (graph-specific; diagnostic) |
 | `snap_way_id` | int64 | yes | OSM way of the snap edge |
 | `snap_fraction` | double | yes | [0, 1] |
 | `snap_projected_longitude`, `snap_projected_latitude` | double | yes | snap point back in WGS84 |
 | `snap_distance_metres` | double | yes | ≥ 0, perpendicular distance to the snap edge |
-| `corridor_face_id` | string | yes | `<thread identity>:<C\|R\|L>` (R054) |
+| `corridor_face_id` | string | yes | `<thread identity>:<C\|R\|L>` (R053) |
 | `corridor_distance_metres` | double | yes | ≥ 0; **equal to `snap_distance_metres`** |
 | `signed_lateral_offset_metres` | double | yes | negative = right of travel |
 | `corridor_heading_degrees` | double | yes | azimuth of travel at the attachment |
@@ -801,7 +801,7 @@ are exceptions; abstentions are silent except in the counters and the diagnostic
   identity = first 16 bytes of `SHA-256("{mask}|{class}|{min end}|{max end}|{loop}")` as
   lower-case hex (32 characters), `loop` printed `True`/`False` (either walk looped).
   `reversed` = `osmId(left) > osmId(right)` if looped, else `leftEnd > rightEnd`. Directed
-  thread = identity + `:+` (not reversed) or `:-`. Face = identity + `:` + `C`/`R`/`L` (R054).
+  thread = identity + `:+` (not reversed) or `:-`. Face = identity + `:` + `C`/`R`/`L` (R053).
   Thread ends are cached per (mask, class, previous, current) and identities per edge, shared by
   all workers; results do not depend on the visiting order.
 - **Where:** `Osm.fs` 753–840 (`localThreadIdentity`, `localFaceIdentity`,
@@ -813,7 +813,7 @@ are exceptions; abstentions are silent except in the counters and the diagnostic
   `Local thread identity keeps a service bay distinct from its through road`.
 - **Constants:** class value `8`, mask values 1/2/3 (part of the identity payload).
 - **Diagnostic:** none.
-- **Proposed verdict:** port the definition (threads drive movement families, R055, and
+- **Proposed verdict:** port the definition (threads drive movement families, R054, and
   consolidation, R070). The exact payload need not match F# unless Rust and F# packs must be
   interchangeable (Q1).
 
@@ -844,7 +844,7 @@ are exceptions; abstentions are silent except in the counters and the diagnostic
 - **Pinned by:** the tests named.
 - **Constants:** 25 m, 0.05, 32 anchor snaps, 90°, 2 m, 50 m.
 - **Diagnostic:** none.
-- **Proposed verdict:** drop; re-express the side-of-road assertions as tests of R054.
+- **Proposed verdict:** drop; re-express the side-of-road assertions as tests of R053.
 
 ### 3.3 Observations and route points
 
@@ -1459,4 +1459,839 @@ are exceptions; abstentions are silent except in the counters and the diagnostic
 - **Diagnostic:** none.
 - **Proposed verdict:** drop; the document keeps accepting the key (format) and ignores it.
 
-<!-- RULES3 -->
+### 3.9 The learned scorer
+
+#### POST-R100 — Where the learned scorer decides
+- **What:** with a v3 document whose scorer is `learned`, the learned decision replaces the
+  heuristic one for **unlabelled** contexts only; authored contexts keep the heuristic family
+  decision (R122). An unlabelled context the learned scorer did not see (no candidate row)
+  resolves `Centroid`. The heuristic still runs for every stop (its decisions feed R122 and the
+  score of contexts without a learned decision).
+- **Where:** `JdfPostInferenceEvaluator.evaluateWithScorer` 47–52, 92–123.
+- **Why:** "The learned scorer replaces the heuristic's decision for unlabelled contexts;
+  authored posts stay on the heuristic path" (comment).
+- **Pinned by:** `Learned v3 policy publishes a live bundle with learned provenance`.
+- **Constants:** none.
+- **Diagnostic:** manifest `scorer: "learned"`.
+- **Proposed verdict:** port (this is production).
+
+#### POST-R101 — Stop-level sources
+- **What:** read once from `observations.parquet`. Per observation: `local_ref` = the value of the
+  first `local_ref=` pair in `raw_tags` (pairs split on `;`, key/value at the first `=`, key
+  non-empty), `platform` = some pair `public_transport=platform`. Source class: null → `?`;
+  prefix `osm:` → `osm`; prefix `external:` → `external:` + the second `:`-separated field (the
+  catalogue's relative path); else the first `:` field. A stop is *multi-post* when source `osm`
+  has ≥ 2 route points there. A source is **stop-level** when it occurs at ≥ 20 multi-post stops
+  and at fewer than half of them (< 0.5) it has ≥ 2 route points. The classification is computed
+  over the whole pack.
+- **Where:** `JdfPostEvidenceReader.observationSource` 361–367, `readObservationFacts` 369–435;
+  Python `features.source_granularity`, `source_class`.
+- **Why:** "A stop-level source publishes one point per stop: at stops where OSM maps two or more
+  posts it almost never has two points itself" (comment; README "Stop-level sources").
+- **Pinned by:** none in F#; Python `test_stop_level_sources_are_detected_and_are_not_posts`.
+- **Constants:** `StopLevelMinimumStops = 20`, `StopLevelMaximumShare = 0.5` (both sides) →
+  `posts.learned.stop_level_minimum_stops`, `stop_level_maximum_share`; must equal the training
+  values (model contract).
+- **Diagnostic:** none in F#; Python prints `stop_level_sources`.
+- **Proposed verdict:** port the rule; whether it stays a pack statistic is Q11.
+
+#### POST-R102 — Post-level hypotheses
+- **What:** per stop, after consolidation: a hypothesis is a choice only if some member
+  observation is not from a stop-level source. Its facts, from those observations only (ordinal
+  order): `local_ref` = first non-null, `platform` = any, `sources` = distinct sorted source
+  classes; `modes` = union of the members' non-empty explicit modes. Hypotheses sorted by id
+  (ordinal). No choice left → no learned decision at the stop.
+- **Where:** `JdfPostPolicyEvaluation.learnedStopDecisions` 381–401.
+- **Why:** README "Candidates backed only by such sources are not posts and leave the choice
+  set".
+- **Pinned by:** golden fixture indirectly (the candidate table was built by Python with the same
+  rule).
+- **Constants:** none.
+- **Diagnostic:** none.
+- **Proposed verdict:** port.
+
+#### POST-R103 — Physical posts
+- **What:** closest-first complete-linkage over the post-level hypotheses (in id order) with
+  `y = lat × 110540`, `x = lon × 111320 × cos(mean latitude of the stop's hypotheses)`: two
+  clusters may merge when they share no source and together carry at most one distinct
+  `local_ref`, and their diameter ≤ 25 m; each round merges the pair with the smallest
+  (diameter, smallest member index of the union), keeping the earlier pair on equality; the
+  union replaces the left cluster and the right is removed. Post id = `"{stop}:{final cluster
+  position}"`. Post support = distinct sources over its members; deficit = stop maximum − own;
+  post modes = union of member modes; a hypothesis is *numbered* when it has a `local_ref` and
+  is a platform; a post is a *bay* when the stop has ≥ 3 numbered hypotheses and the post holds
+  one. Stop post count = number of posts.
+- **Where:** `JdfPostScorer.clusterPosts` 120–132, `completeLinkage` 87–118, `distances` 76–85;
+  `learnedStopDecisions` 402–436; Python `features._cluster_stop`, `candidate_facts`.
+- **Why:** "a post never contains one source twice (a source maps each post once), differing
+  local_ref values never merge, diameter <= 25 m" (doc comment).
+- **Pinned by:** `Posts never contain one source twice or two local refs`, `Posts farther apart
+  than 25 m stay separate`.
+- **Constants:** `MaximumPostDiameterMetres = 25.0`, `MinimumNumberedBays = 3` (model contract).
+- **Diagnostic:** none.
+- **Proposed verdict:** port exactly (training parity).
+
+#### POST-R104 — Areas
+- **What:** posts ordered by post id **as strings** (`"5:10"` before `"5:2"`); centre = mean of
+  member medoid coordinates; mode class `any` (no modes), `road` (some mode in {ROAD, BUS,
+  TROLLEYBUS, SHARED}), else `tram`. Complete linkage over centres (same metric) with diameter ≤
+  40 m, merge allowed when the union of classes (with `any` as no class) has at most one; ties
+  keep the first pair found. Area id `"{stop}:a{position}"`.
+- **Where:** `JdfPostScorer.clusterAreas` 134–141; `learnedStopDecisions` 424–435; Python
+  `features.post_areas`, `_cluster_areas`.
+- **Why:** "Areas of posts within 40 m that never mix tram and road posts" (doc comment).
+- **Pinned by:** `Areas never mix tram and road posts`.
+- **Constants:** `MaximumAreaDiameterMetres = 40.0` (model contract).
+- **Diagnostic:** none.
+- **Proposed verdict:** port exactly.
+
+#### POST-R105 — Candidate rows
+- **What:** from the consolidated rows (R073; before R080, so no alternative-corridor invariant):
+  rank 0, hypothesis is post-level, and its **post** modes are empty or compatible with the
+  context mode (R081 table; no 15 m inheritance). Rejected rows stay (as `eligible = 0`).
+- **Where:** `learnedStopDecisions` 437–443; Python `build_candidate_table` 406–424.
+- **Why:** "Modes propagate through the physical post: a catalogue point clustered with a
+  tram-only OSM stop is part of a tram post and is not a bus choice" (Python comment).
+- **Pinned by:** none in F#.
+- **Constants:** none.
+- **Diagnostic:** none.
+- **Proposed verdict:** port.
+
+#### POST-R106 — Feature values
+- **What:** per candidate row (frozen names, section 2.5): `side`, `alignment`, `proximity` as
+  R082; `corridor_distance` = value or 0; `routed_fit` as R082 or 0 (uses the document's
+  `maximum_routed_excess_metres`); `routed_excess_metres_capped` = clamp(excess, 0, 1000), 1000
+  when missing; `excess_minus_context_min` = capped − the context's minimum capped;
+  `eligible` = 1 when R081's reason without the mode gate is none (obsolete lifecycle, topology,
+  distance, excess, left side); `has_local_ref`; `is_bay`; `post_support`;
+  `post_support_deficit`; `is_tram` (mode E); `is_trolleybus` (mode T);
+  `anchor_previous_missing`, `anchor_next_missing` (context neighbour id null);
+  `service_edge_count` of the rank-0 variant. Context keys: previous/next as `jdf:stop:<N>` text
+  or none, stop post count.
+- **Where:** `learnedStopDecisions` 444–497.
+- **Why:** README "Frozen features (the JrUtil port reproduces exactly these)".
+- **Pinned by:** none (the golden fixture starts from feature values; section 5).
+- **Constants:** `LearnedExcessCapMetres = 1000.0`.
+- **Diagnostic:** none.
+- **Proposed verdict:** port exactly; add the missing feature-parity fixture (Q14).
+
+#### POST-R107 — Stage 1, collective features, stage 2
+- **What:** candidates sorted by (context id, hypothesis id) (ordinal); stage-1 softmax per context
+  (section 2.5); post mass = per (context, post) sum of stage-1 probabilities. Collective features
+  per (context c, post p, own mass m), with movement key (previous or `∅`, next or `∅`) and sums
+  taken over contexts in context-id order: `same_movement_mass` = (Σ mass on p over contexts with
+  c's movement − m) / (n − 1) and `has_same_movement` = 1 when n > 1, else 0 and 0;
+  `reverse_mass` = Σ mass on p over contexts with movement (next, previous) / their count and
+  `has_reverse` = 1 when such contexts exist and previous ≠ next, else 0 and 0;
+  `same_next_mass` = (Σ over contexts with c's next − m) / (n − 1) when c's next is known and
+  n > 1, else 0; `same_previous_mass` likewise. Stage-2 softmax per context over features ++
+  collective.
+- **Where:** `JdfPostScorer.softmax` 183–196, `collectiveFeatures` 200–239, `postMass` 241–246,
+  `stopProbabilities` 248–270; Python `collective.py`.
+- **Why:** "the reverse movement … usually uses the other post…; other lines making the same
+  movement usually share a post" (Python module doc).
+- **Pinned by:** `Learned scorer matches the Python reference on the golden stops` (1e-9 on
+  both stages, > 100 decisions).
+- **Constants:** `∅` as the missing-neighbour key.
+- **Diagnostic:** none.
+- **Proposed verdict:** port exactly.
+
+#### POST-R108 — Learned decision rule
+- **What:** per context: `post(c) = min(1, stage-2 mass of c's post)`, `area(c)` = stage-2 mass of
+  c's area. `top` = first by (post desc, platform desc, stage-2 probability desc, hypothesis id
+  asc); `areaTop` = first by ((area, post) desc, platform desc, probability desc, id asc).
+  Threshold = `complex` when the stop has ≥ 3 posts, else `simple`. `Physical(top)` when
+  post(top) ≥ threshold; else `Area(areaTop)` when an area threshold exists and area(areaTop) ≥
+  it; else `Abstain`. Each decision carries the post and area probabilities of the chosen (or
+  top) candidate.
+- **Where:** `JdfPostScorer.scoreStop` 272–311; Python `model.decisions`.
+- **Why:** README "Decisions": thresholds calibrated per stratum to 0.9 precision.
+- **Pinned by:** `Learned scorer matches the Python reference on the golden stops`, `Uncertain
+  contexts fall back to the area, then abstain`.
+- **Constants:** `ComplexStopPosts = 3` (model contract); thresholds from the model.
+- **Diagnostic:** none.
+- **Proposed verdict:** port exactly.
+
+#### POST-R109 — Learned decision to assignment
+- **What:** `Physical` and `Area` both publish the chosen hypothesis as an estimated location
+  (R121) with resolution text `Physical` / `Area`; the assignment's `score` = post probability
+  and `margin` = **area probability** (B10). `Abstain` → `Centroid` (scores kept). The plan does
+  not distinguish `Area` from `Physical` (B9).
+- **Where:** `evaluateWithScorer` 97–123.
+- **Why:** README "the area's most probable post is published (`Area`)".
+- **Pinned by:** `Learned v3 policy publishes a live bundle with learned provenance`.
+- **Constants:** none.
+- **Diagnostic:** `assignments.parquet` (feature export), `derived_post_assignments`.
+- **Proposed verdict:** port, with typed score fields (Q6 decides how `Area` is published).
+
+### 3.10 Assignments and authored posts
+
+#### POST-R120 — Assignment rows
+- **What:** one row per context (the first replay row of each context, stop-major): context
+  facts, kind, role, family, resolution, location, hypothesis, score, margin. Authored contexts:
+  resolution = their family's heuristic resolution, never a location. Unlabelled, heuristic
+  scorer: `Physical` with location when the family decision is physical, else `Centroid`.
+  Unlabelled, learned: R109. Rows are spooled (in memory up to 256 MiB, then a temp file).
+- **Where:** `evaluateWithScorer` 53–148; `ReplayableRowStore` (`JdfPostInference` 97–315).
+- **Why:** comment "Per-stop evaluation completes before the next stop is read".
+- **Pinned by:** `Evaluation is deterministic and diagnostics do not change decisions`,
+  `Complete inference result adapts without re-evaluating and releases its spills`,
+  `Replayable row stores repeat and clean deterministic binary spills`.
+- **Constants:** `ResultRowMemoryBudgetBytes = 256 MiB`.
+- **Diagnostic:** none.
+- **Proposed verdict:** port the content; drop the spill store (rule 8).
+
+#### POST-R121 — Estimated location identity
+- **What:** `location id = "estimated:" + sha("{stop}|{hypothesis id}")`. Distinct hypotheses
+  give distinct locations; it is the input of the ordinal (R131/R132) and never published.
+- **Where:** `JdfPostInferenceEvaluator.replayPhysicalLocationId` 23–27.
+- **Why:** "Stable ID of the inferred post published at one consolidated hypothesis" (comment).
+- **Pinned by:** `Inferred posts keep registered ordinals despite new locations` (uses ids of
+  this form).
+- **Constants:** prefix `estimated:`.
+- **Diagnostic:** `derived_location_id`.
+- **Proposed verdict:** replace by the hypothesis handle within the pass; ordinals key on the
+  hypothesis' position (R132), so no id is needed.
+
+#### POST-R122 — Authored post positions
+- **What:** per (stop, authored key) over its authored contexts: `relevant` = each context's
+  family decision (repeats when contexts share a family); `physical` = the relevant ones that are
+  `Physical`; eligible when they name exactly one hypothesis, and (unanimity off, or relevant
+  non-empty and every relevant decision physical), and each physical one has score ≥ 0.75 and
+  margin (0 if none) ≥ 0.20. The hypothesis must also have been **published by an unlabelled
+  context** at the stop (`Physical` or `Area`) (B11); the position is that location and the
+  hypothesis medoid. Sorted by (stop, key).
+- **Where:** `evaluateWithScorer` 155–201; `JdfPostInference.authoredResolutionEligible`
+  520–529.
+- **Why:** unknown beyond the policy names.
+- **Pinned by:** `Every mandatory policy subsystem has a production boundary regression`
+  (predicate only).
+- **Constants:** policy `authored_resolution.*`.
+- **Diagnostic:** counter `authored_posts_positioned`.
+- **Proposed verdict:** decide (Q5); as is, port.
+
+#### POST-R123 — Counters
+- **What:** `contextCount` = assignment rows; `candidateStopCount` = stops with route points in the
+  pack (including one-point stops, which get no contexts); `unresolvedContexts` = unlabelled rows
+  without a location; `authoredPositions`.
+- **Where:** `evaluateWithScorer` 298–301.
+- **Why:** manifest counters.
+- **Pinned by:** `Evaluation is deterministic…` (counters equal across runs).
+- **Constants:** none.
+- **Diagnostic:** manifest (R139).
+- **Proposed verdict:** replace by per-rule diagnostic counts in the package summary.
+
+### 3.11 Plan, ordinals and publication
+
+#### POST-R130 — Plan from assignments
+- **What:** pattern context key = (stop, transport mode parsed from `A`/`E`/`T`, line,
+  distinction, direction, pattern, position, role). Unlabelled rows: record neighbours, role and
+  family; with a location and hypothesis, a selection {location, stop, hypothesis, coordinates =
+  hypothesis medoid converted `float → decimal` (15 significant digits), kind `physical`, score
+  (0 if none), margin}; else the key is unresolved. Inferred locations = one selection per
+  location id, ordered by location id (ordinal). Authored positions are kept when their location
+  is an inferred one (always, by R122). Authored contexts (distinct, sorted by role, previous,
+  next) are kept per (stop, key) for diagnostics.
+- **Where:** `JdfPostPlan.postEstimationPlanFromInferenceResult` 106–209.
+- **Why:** "Policy evaluation remains entirely in JdfPostInferenceEvaluator; this function only
+  translates already-decided assignments" (comment).
+- **Pinned by:** `Complete inference result adapts without re-evaluating and releases its
+  spills`.
+- **Constants:** none.
+- **Diagnostic:** none.
+- **Proposed verdict:** replace by `Edits` (new boarding points, call boarding-point changes,
+  authored point positions) built directly from the decisions.
+
+#### POST-R131 — Ordinals without a registry
+- **What:** per stop, the stop's inferred location ids ordinal-sorted get ordinals 1, 2, ….
+- **Where:** `JdfPostPlan` 170–180.
+- **Why:** deterministic numbering.
+- **Pinned by:** none directly.
+- **Constants:** none.
+- **Diagnostic:** none.
+- **Proposed verdict:** port with a content-derived order (e.g. hypothesis medoid coordinate,
+  then observation ids) instead of a hash order.
+
+#### POST-R132 — Registry ordinals
+- **What:** per stop with inferred locations (ascending stop): registered `est:<k>` posts of the
+  stop with coordinates (retired ones included, B21); all (location, registered) pairs within
+  25 m (`StopRegistry.distanceMetres`: 111,320 m per degree on both axes, cos of the mean
+  latitude) sorted by (distance, ordinal, location id); assigned greedily when the location is
+  unassigned and the ordinal unused. Remaining locations, by location id, take `max(registered
+  est ordinals of the stop, 0) + 1`, `+ 2`, … and are *fresh*.
+- **Where:** `JdfPostPlan.applyStopRegistry` 237–265; `StopRegistry.assignInferredPostOrdinals`
+  241–284, `distanceMetres` 235–239.
+- **Why:** "Registered inferred posts are matched by reference coordinate, so an `est:<k>` ID
+  survives changes in the evidence that produced the location" (comment); registry README.
+- **Pinned by:** `Inferred posts keep registered ordinals despite new locations`, `A registered
+  post is reused by its nearest location only`.
+- **Constants:** `inferredPostMatchMetres = 25.0` → `posts.registry.inferred_post_match_m`
+  (jdf-merge R211 names it).
+- **Diagnostic:** log "Stop registry {Sha256}: {Inferred} inferred post locations, {New} new
+  ordinals".
+- **Proposed verdict:** port; the distance via `jr_model::geo`.
+
+#### POST-R133 — Registry review rows
+- **What:** with `--stop-registry-candidates`, fresh ordinals are written as `stop_id, est:<k>,
+  lat, lon, new` (coordinates `0.000000` format), header `stop_id,post_key,lat,lon,reason`, LF,
+  RFC 4180 quoting, UTF-8 without BOM.
+- **Where:** `JdfBundle.applyPostRegistry` 199–210; `StopRegistry.writeCsv` 292–301,
+  `formatCoordinate` 301.
+- **Why:** registry README (promote workflow).
+- **Pinned by:** `Review CSV quotes separators`.
+- **Constants:** format `0.000000`.
+- **Diagnostic:** the file.
+- **Proposed verdict:** port in `jr-publish`.
+
+#### POST-R134 — The estimated boarding point
+- **What:** one GTFS child stop per inferred location: copy of the parent stop row (name, zone,
+  wheelchair, timezone) with id `jdf:stop:<N>:est:<k>`, `location_type` 0, `parent_station`
+  `jdf:stop:<N>`, `platform_code` null, coordinates = the selection's; plus a `cz_stops` row
+  (stop id, stop place id, `cisStopId`, no post id, no ASW id, no source ids); ordered by (stop,
+  location id). No `source_stop_metadata` row, so serving copies the parent's precision and
+  coordinate source (B13). A missing ordinal throws "Inferred JDF post has no deterministic
+  ordinal".
+- **Where:** `JdfToGtfs.inferredPostId` 53–58, `getGtfsStopsWithPlan` 182–195,
+  `getCzStopsWithPlan` 683–696.
+- **Why:** jdf-convert §2.3.
+- **Pinned by:** `Learned v3 policy publishes a live bundle with learned provenance` (the package
+  validates; calls keep the route stop's location).
+- **Constants:** suffix `:est:`.
+- **Diagnostic:** none.
+- **Proposed verdict:** port as an `Edit` adding a `BoardingPoint` of kind `post`, position
+  estimated with a new coordinate source (Q15), built in `jr_model::identity`.
+
+#### POST-R135 — Calls that board at an estimated point
+- **What:** per trip, when the plan has any selection: recompute usable calls, pattern hash,
+  direction, blocks and roles exactly as in capture; for each usable call **without** an authored
+  key, look up its pattern context key; a hit maps the call's `routeStopId` to the selection.
+  When the call is emitted, its boarding point is: post id → authored post; else non-blank
+  number → textual post; else the mapped selection → `jdf:stop:<N>:est:<k>`; else
+  `:unspecified`.
+- **Where:** `JdfToGtfs.inferredSelectionsForTrip` 413–445, `convertedStopId` 349–377,
+  application 485–559.
+- **Why:** "Evidence replay has already performed every post-inference decision" (comment).
+- **Pinned by:** `Learned v3 policy publishes a live bundle with learned provenance`.
+- **Constants:** none.
+- **Diagnostic:** none.
+- **Proposed verdict:** port as `Edit`s on calls, matched by the pattern index (no recomputation).
+
+#### POST-R136 — Fallback
+- **What:** an unlabelled call whose context was not decided, or that has no context (stop with
+  fewer than two candidates, stop without a precise location, mode other than bus, trolleybus,
+  tram), boards at `jdf:stop:<N>:unspecified` (jdf-convert R418).
+- **Where:** `convertedStopId` 368–377.
+- **Why:** jdf-convert R418.
+- **Pinned by:** jdf-convert tests.
+- **Constants:** none.
+- **Diagnostic:** counters `centroid_pattern_fallbacks`, `weak_or_unresolved_contexts`.
+- **Proposed verdict:** port (nothing to do: the call keeps what the compiler gave it).
+
+#### POST-R137 — Authored posts with estimated coordinates
+- **What:** the authored child stop `…:post:id:<P>` takes the position of `(N, "id:<P>")`, and the
+  textual child `…:post:<esc(num)>` the position of `(N, "num:<num>")`, when R122 positioned
+  them; otherwise the parent's coordinates. Ids, codes and calls are unchanged.
+- **Where:** `getGtfsStopsWithPlan` 147–181.
+- **Why:** unknown.
+- **Pinned by:** none.
+- **Constants:** none.
+- **Diagnostic:** counter `authored_posts_positioned`.
+- **Proposed verdict:** port as position edits on the authored and textual boarding points.
+
+#### POST-R138 — Retention
+- **What:** estimated points are published only when a retained call uses them (jdf-convert
+  R423). A location chosen only by contexts of trips without service days is dropped, but its
+  ordinal is consumed and it can appear in the registry review file (B17).
+- **Where:** `assembleGtfsFeed` 747–754.
+- **Why:** jdf-convert R423.
+- **Pinned by:** jdf-convert tests.
+- **Constants:** none.
+- **Diagnostic:** none.
+- **Proposed verdict:** port; with Q10 the case disappears.
+
+#### POST-R139 — Manifest section `compiler.estimated_posts`
+- **What:** keys in order: `execution_mode` (`live` when a live evidence path exists, else
+  `disabled`; capture runs write no bundle), `evaluator_version` (`post-estimator-v2`),
+  `policy_schema_version` (2), `policy_id`, `policy_sha256` (R004), `scorer` (`learned` /
+  `heuristic`), `policy_document_sha256` (null without a document), `routing_pbf_sha256`,
+  `routing_manifest_sha256` (null when disabled), `evidence_format`,
+  `evidence_manifest_sha256`, `routing_evidence_sha256` (SHA-256 of
+  `route_point_evidence.parquet`; null when disabled), `candidate_bearing_stops` (R123),
+  `authored_posts_positioned`, `single_internal_posts` (distinct locations among call
+  selections), `physical_internal_posts` (inferred locations of kind physical; equal to the
+  previous one by construction), `centroid_pattern_fallbacks` (unresolved keys),
+  `weak_or_unresolved_contexts` (R123; equal to the previous one). Oběhy requires the five
+  counters `candidate_bearing_stops`, `authored_posts_positioned`, `single_internal_posts`,
+  `physical_internal_posts`, `weak_or_unresolved_contexts` when the section exists
+  (`national_jdf._verify_bundle`).
+- **Where:** `JdfBundleManifest.writeManifest` 290–338.
+- **Why:** provenance.
+- **Pinned by:** `Learned v3 policy publishes a live bundle with learned provenance`.
+- **Constants:** `post-estimator-v2`.
+- **Diagnostic:** the manifest.
+- **Proposed verdict:** replace: the manifest records the pass's inputs (policy document hash,
+  graph digest, evidence digest) and per-rule counts; the duplicated counters go; Oběhy's check
+  moves to the new names (contract change, raise with Oběhy).
+
+#### POST-R140 — Diagnostics artifact tables
+- **What:** only with `--diagnostics-out` (Oběhy always passes it), under `post-inference/`:
+  `derived_post_assignments.parquet` (authored rows `positioned`, authored keys at stops with ≥ 2
+  hypotheses or ≥ 2 raw candidate positions without a position `insufficient_parent_centroid`,
+  internal rows `positioned`, unresolved rows `centroid_fallback`; columns
+  `target_gtfs_stop_id, assignment_kind, derived_location_id, mode, line_id, direction,
+  pattern_hash, pattern_position, movement_family_id, context_previous_stop_id,
+  context_next_stop_id, same_stop_block_role, score, margin, selected_candidates,
+  rejected_candidates, status`; the row count must equal a precomputed total, else
+  `failwith`); `derived_post_locations.parquet` (location, stop, kind, representative,
+  `diagnostic_label = O<1-based index among the stop's hypotheses>`, coordinates, candidate ids,
+  `provenance` — always empty, B2); `post_candidate_evidence.parquet` (raw observations with
+  `hypothesis_id` — always null, B1); `post_physical_hypotheses.parquet` (`sources` always empty,
+  B2).
+- **Where:** `JdfBundleTables` 529–790; `JdfBundleEvidence.writeDerivedPostAssignmentsParquet`
+  187–257; `writeBundleCore` 539–567.
+- **Why:** "post-inference tables are diagnostics and are only produced for the artifact"
+  (comment).
+- **Pinned by:** `Routed bundle writes post-inference diagnostics only to the diagnostics
+  artifact`.
+- **Constants:** none.
+- **Diagnostic:** the tables.
+- **Proposed verdict:** replace by one decisions table (context, kind, hypothesis, resolution,
+  scores, rejected hypotheses) written by `jr-publish` diagnostics; drop the broken columns (Q12).
+
+#### POST-R141 — Feature export
+- **What:** `jdf-export-post-features --evidence=DIR [--policy=FILE] --output=DIR` evaluates a pack
+  with diagnostics and writes `diagnostic_scores.parquet` (per consolidated (context, hypothesis,
+  variant) row: eligibility without the mode gate, components, routed fit, raw facts, selected
+  corridor ranks count, adjustments, popularity 0, total), `hypotheses.parquet`,
+  `assignments.parquet` and the policy JSON; Parquet metadata `obehy.relation, pack_id,
+  capture_tool_version, evaluator_version, policy_id`. It is the input of the Python training
+  chain.
+- **Where:** `JdfBundleEvidence.exportPostInferenceFeatures` 481–570; `evaluateWithScorer`
+  202–297.
+- **Why:** README data-flow table.
+- **Pinned by:** `Feature export writes the evaluator's diagnostic rows hypotheses and
+  decisions`, `Evaluation is deterministic and diagnostics do not change decisions`.
+- **Constants:** none.
+- **Diagnostic:** the files.
+- **Proposed verdict:** port as `jrutil posts export` over a pack (training depends on its
+  columns); ideally the same command writes the learned candidate table directly (Q14).
+
+### 3.12 The routing extract (Oběhy side and merge)
+
+#### POST-R150 — Routing demands
+- **What:** (JDF-R252 content) at merge write time, over merged route stops of every surviving
+  version: each consecutive pair in `routeStopId` order where either stop has post-candidate
+  evidence → demand (`both`, `local`, previous, next); each evidence stop with a stored location
+  (any precision) → (`both`, `terminal`, stop, none). Demands without a located endpoint drop;
+  `demandId = sha("{mode}|{previous}|{next}|{searchClass}")` with F# option text; distinct by id;
+  sorted by (mode, previous, next, class, id). Written as `JrutilRoutingDemands.txt`.
+- **Where:** `JdfMerger.batchWithTripStops` 153–206.
+- **Why:** "Compact merge output consumed by the Oběhy Osmium orchestration. It avoids reparsing
+  the national Zasspoje relation merely to discover routing areas" (model comment).
+- **Pinned by:** none.
+- **Constants:** `both`, `local`, `terminal`.
+- **Diagnostic:** none.
+- **Proposed verdict:** replace: the demand set is derived from the timetable in memory by the
+  build when it prepares the routing extract; no file.
+
+#### POST-R151 — Demand envelope
+- **What:** per demand with located endpoints: `distance` = between the two endpoints (111,320 m
+  per degree on both axes, cos of mean latitude; 0 for one endpoint); `halo = min(5000, (2500 for
+  terminal, else 1000) + 0.25 × distance)`; rectangle = bounding box ± `halo / 111320` degrees
+  latitude and ± `halo / max(20000, 111320 |cos(mean lat)|)` degrees longitude, rounded to 7
+  decimals, deduplicated; union (`shapely.union_all`, grid 1e-7, normalized) as a MultiPolygon
+  feature; `osmium extract --strategy=complete_ways --polygon` from the base extract. Cached while
+  the demand file hash, source key and output size/mtime match.
+- **Where:** `repo/src/obehy/osm_snapshot.py` 729–909.
+- **Why:** comment "Clip the cached routing base to deterministic national conversion demand".
+- **Pinned by:** Oběhy unit tests (not read).
+- **Constants:** 1000, 2500, 5000 m, 0.25, 20,000.
+- **Diagnostic:** manifest `jdf-routing-envelope-v2`.
+- **Proposed verdict:** replace: `jr-geo` builds the graph from the base road/tram facts and
+  clips (or not) in memory; whether a clip is needed at all is a performance question (section 9).
+  Neighbour anchors can lie outside the clip (B20).
+
+#### POST-R152 — Base road/tram filter
+- **What:** `osmium tags-filter` with `w/highway=motorway,trunk,primary,secondary,tertiary,
+  unclassified,residential,living_street,service,road,busway`, `w/railway=tram`,
+  `w/construction`, `n/barrier=*`, `r/type=restriction`, referenced objects kept. No `*_link`
+  (B5). The post-candidate filter (`n/highway=bus_stop`, `n/public_transport=platform,pole,
+  station`, `n/railway=tram_stop`, `n/amenity=bus_station`) feeds stop matching (jdf-read).
+- **Where:** `osm_snapshot.py` 602–645.
+- **Why:** "Extract the auditable road/tram topology later clipped to routing demand".
+- **Pinned by:** none read.
+- **Constants:** the tag lists.
+- **Diagnostic:** manifest `jdf-transit-routing-base-v1`.
+- **Proposed verdict:** replace by `jr-formats` OSM facts selected by the same policy lists as
+  R011–R018 (one list, not two).
+
+---
+
+## 4. Identity
+
+| ID | Format | Built in | Parsed back |
+|---|---|---|---|
+| Estimated boarding point (published) | `jdf:stop:<N>:est:<k>`, k ≥ 1 | `JdfToGtfs.inferredPostId` | `StopRegistry.isPostKey`/`estOrdinal` parse `est:<k>` from `posts.csv` (registry file, not an output ID) |
+| Unspecified point (published) | `jdf:stop:<N>:unspecified` | `jdfUnspecifiedStopId`; duplicated as a literal in `JdfBundleTables` 684 | no |
+| Authored / textual post (published) | `jdf:stop:<N>:post:id:<P>`, `jdf:stop:<N>:post:<esc(num)>` | `JdfGtfsRules` | `JdfBundleTables.authoredTargetId` rebuilds them from the authored key `id:<P>` by **parsing** `Int64.Parse(key.Substring(3))` |
+| Stop in the pack | `jdf:stop:<N>` | `jdfStopId` | **parsed** everywhere in the reader and store with `(?:jdf\|cis):stop:(?<id>[0-9]+)` (stop, previous, next) |
+| Authored key | `id:<P>` / `num:<trimmed text>` | R043 | prefix split in `authoredTargetId` |
+| Route point | `route-point:<sha(stop\|lat\|lon)>` (decimal text) | R031 | no |
+| Observation | `osm:node:<id>`, `external:<relative path>:sha256:<hex>` | fix stage | **parsed** for the source class (prefix and second field, R101) |
+| Context | `context:<sha(...)>` | R044 | no (recomputed by the store) |
+| Same-stop block | `same-stop-block:<sha(...)>` | R042 | no (recomputed) |
+| Pattern hash | 64 hex | R041 | no |
+| Movement family | `movement-family:<sha(...)>` | R054 | no (recomputed) |
+| Thread / directed thread / face | 32 hex, `+ ":+"`/`":-"`, `+ ":C"`/`":R"`/`":L"` | R022, R053 | **split** on `:` only in a test |
+| Corridor | 16 hex FNV | R023 | no |
+| Routing key | `routing-evidence:<sha(...)>` | R046 | no |
+| Hypothesis | 64 hex `sha(stop\|observation ids)` | R072 | no |
+| Estimated location | `estimated:<sha(stop\|hypothesis)>` | R121 | no |
+| Learned post / area | `<stop>:<n>`, `<stop>:a<n>` | R103, R104 | Python splits `post_id` on `:` to get the stop key (`post_areas`); F# does not |
+| Pack | 64 hex | section 2.3 | recomputed on load |
+| Legacy candidate | 64 hex (`JdfFixups.candidateId`) | fix | no; compared with route-point ids (B1) |
+| Diagnostic label | `O<n>` | R140 | no |
+
+Context prefixes and payloads are part of the evidence-v2 contract (they are recomputed by the
+store); Rust packs need the same payloads only if they must validate under F# (Q1).
+
+---
+
+## 5. The evidence boundary
+
+The plan: the evidence-v2 pack is the boundary; a policy or scorer change is evaluated on a pack
+before any build.
+
+**What already holds.** `evaluateWithScorer` takes only the validated store, the policy and the
+scorer; every decision (consolidation, heuristic, learned, authored) is a function of the pack.
+`jdf-export-post-features` and the test `Evaluation is deterministic and diagnostics do not change
+decisions` show it: decisions per context can be recomputed offline from a pack for any policy
+whose routed-excess gate is ≤ 1000 m and whose variant count is ≤ 3. Decisions are comparable
+across implementations without identical evidence rows, because the keys are timetable- and
+observation-derived: the context id (R044) depends only on the timetable, and a hypothesis is
+identified by its stop and observation ids (R072). The natural agreement metric is "per context
+id, the same set of observation ids chosen, or both abstain".
+
+**What the pack lacks for evaluating a change end to end:**
+
+1. **Which calls a context stands for, and whether they run.** The pack holds one context per
+   deduplicated pattern position; the calls behind it, their trips and service days are not in
+   it. `--export-post-context-calls` writes the call mapping, but only in capture-only mode,
+   without service days or traffic weights (Python recomputes weights from the GVD,
+   `post_scorer.weights`). Without it, "how many published calls change" cannot be measured
+   from a pack.
+2. **Registry state.** Published IDs (`est:<k>`) depend on `posts.csv` (R132); the pack does not
+   record the registry hash, so the ID churn of a change cannot be measured from the pack alone.
+3. **Labels.** Labelled accuracy needs the overlay traces (PID, IDS JMK call mappings) and the
+   label rules of `post_scorer.labels`; none is in the pack. That is acceptable (labels are an
+   evaluation input), but the label extraction is Python-only and keyed by context id, so Rust
+   must keep R044 exactly.
+4. **Anchor coordinates and the stop's own position.** Contexts carry the anchor *stop ids*, not
+   the anchor coordinates used for routing (route-point medoid or precise location, R045), nor
+   the stop's precise location; the routing keys are not stored either. A reviewer cannot tell
+   from the pack why a corridor was what it was.
+5. **What was excluded before the pack.** Stops with one candidate position (R033), stops without
+   a precise location, candidates beyond 300 m (R030) and calls of other modes leave no trace, so
+   coverage loss is invisible; the diagnostics artifact's `insufficient_parent_centroid` rows
+   (R140) cover only authored keys.
+6. **The stop-level source list.** It is recomputed from the pack (R101); a regional or
+   source-excluded pack yields a different list than the national pack the build sees, so a
+   learned decision evaluated on a training pack can differ from the build's for the same
+   context. Nothing records the list.
+7. **Feature parity between the training table and the serving computation.** The Python
+   candidate table (`features.build_candidate_table`) and F# `learnedStopDecisions` compute the
+   17 features independently from the same pack and the feature export; the golden fixture starts
+   *from* feature values, so a drift in R102–R106 (post clustering inputs, `is_bay`, mode gate,
+   stop-level filtering, `eligible`) is not caught by any test. Two differences exist today: the
+   Python `is_bay` can use bus-station polygons (`--bus-stations`; not passed by
+   `run-regions.ps1`), F# never does; Python filters rows with rejection reason
+   `mode-incompatible`, which the feature export never emits (no-op).
+8. **Router changes.** By design a router change needs a recapture; the pack cannot evaluate it.
+   The pack does record the router contract versions and ceilings, so stale packs are refused.
+
+What a Rust pack must carry that the Rust fix stage does not hand over today
+(`fix/osm.rs` facts): `support_weight` (always 1 today), `source_object_id` (used by capture
+exclusions), `observed_at` (always null), and the raw coordinate text if route point ids are kept
+(R031). The facts list does carry `source_kind`, modes, lifecycle and the audit tags (as
+`tag:<key>` pairs, from which `raw_tags` can be rebuilt in the F# `key=value;…` form).
+
+---
+
+## 6. Known or probable bugs
+
+- **B1 — `post_candidate_evidence.hypothesis_id` is always null.** `JdfBundleTables` 701–714 maps
+  hypotheses' `memberCandidateIds` (route point ids, `route-point:<hex>`, set from
+  `memberRoutePointIds` in `JdfPostPlan` 120) and looks up `evidence.candidateId`, which is the
+  bare 64-hex `JdfFixups.candidateId`. The two never match. Diagnostics only.
+- **B2 — Provenance is always empty.** `JdfPostPlan` 124 sets `sources = [||]` for every
+  hypothesis; `derived_post_locations.provenance` (`JdfBundleTables` 538–544) and
+  `post_physical_hypotheses.sources` are therefore empty strings. Diagnostics only.
+- **B3 — Probable crash of diagnostics with `--diagnostics-out`.** `authoredInsufficientAssignments`
+  indexes `candidateLookup.[stopId]` (`JdfBundleTables` 635) for every authored key from
+  `callFacts.authoredModes`, which covers stops with ≥ 2 distinct raw candidate coordinates
+  (`JdfBundle` 438–444). `candidateLookup` only holds stops that produced hypotheses, i.e. stops
+  with a precise location, ≥ 2 candidates within 300 m and at least one bus/trolleybus/tram
+  context. An authored call at a stop failing any of these throws `KeyNotFoundException` and fails
+  the build; Oběhy always passes `--diagnostics-out`. Not observed in the recorded live builds,
+  which suggests the combination is rare, not impossible.
+- **B4 — Authored keys are trimmed in one place and not in another.** `scanCallDerivedFacts`
+  builds `num:{value}` from the untrimmed number (`JdfBundleTables` 199–203); capture and the plan
+  trim (`JdfPostEvidence` 302–307, `JdfPostPlan` 211–215). A padded number gives an "insufficient"
+  row next to the positioned one, and the row total computed in 645–647 then disagrees with the
+  rows written, so `writeDerivedPostAssignmentsParquet` fails ("Derived post assignment count
+  mismatch"). Diagnostics path only.
+- **B5 — Link roads are not routable.** Neither the Oběhy base filter (`osm_snapshot.py` 609–615)
+  nor `roadHighways` (`Osm.fs` 34–37) includes `motorway_link`, `trunk_link`, `primary_link`,
+  `secondary_link`, `tertiary_link`; the route-shapes filter (650–658) does. A bus route through a
+  slip road or a junction ramp must detour (higher excess, other corridor) or is `disconnected`.
+  Probable effect on decisions near interchanges.
+- **B6 — Every barrier blocks.** `barrierBlocked` (`Osm.fs` 263–268) treats any `barrier=*`
+  (including `lift_gate`, `gate`, `kerb`, `border_control`) as impassable for buses and trams
+  unless the node itself has `bus`/`psv` permission. Bus-station entrances commonly have lift gates
+  without such a tag, so posts inside the station are reachable only by detour or not at all —
+  the situation the learned scorer was introduced for ("the routed estimator often picks a post
+  whose routing penalty is lower than the station bays", README).
+- **B7 — Bus exemptions are ignored.** `oneway:bus`/`oneway:psv=no` (contraflow bus lanes),
+  `restriction:bus`, `restriction:psv`, `except=bus;psv` and via-way restrictions are not read
+  (R015, R018). Buses are held to car turn restrictions and one-ways.
+- **B8 — Lifecycle classes.** Validation admits `current`, `temporary`, `proposed`
+  (`JdfModel.validatePostCandidateEvidence`), but `has_current_lifecycle` is true only for `""`
+  and `active`, and `has_obsolete_lifecycle` only for `abandoned`, `disused`, `construction`
+  (`JdfPostEvidence` 471–473). A `proposed` platform is a fully eligible candidate; a point whose
+  only lifecycle is `current` or `temporary` is neither current nor obsolete, which changes
+  consolidation compatibility (R070).
+- **B9 — An area fallback is published as if it were a physical post.** R109: `Area` decisions
+  get a location and become `jdf:stop:<N>:est:<k>` with `selectionKind "physical"`; nothing in the
+  package says the post is only "somewhere in this 40 m area", and the manifest counts it among
+  `physical_internal_posts`.
+- **B10 — Learned scores are stored in the wrong fields.** `evaluateWithScorer` 102–107 writes the
+  post probability to `score` and the **area probability to `margin`**; `derived_post_assignments`
+  and `assignments.parquet` therefore report an area probability as a margin.
+- **B11 — Authored positions depend on unrelated unlabelled calls.** R122 positions an authored
+  post only when some unlabelled context at the stop published the same hypothesis
+  (`publishedPhysical`, `evaluateWithScorer` 155–163, 190–198). At a stop where every call is
+  authored, authored posts never get a position, however strong the evidence. Under the learned
+  scorer the authored rule needs both a heuristic `Physical` decision (score ≥ 0.98 for the
+  family) and a learned publication of the same hypothesis.
+- **B12 — Contexts that differ only by authored key merge in the heuristic.** The heuristic's
+  context key (`evaluateReplayPolicy` 270–271) omits `authoredPostKey`, while pattern
+  deduplication (R041) keeps trips whose authored keys differ elsewhere in the pattern as distinct
+  patterns. Two contexts at the same position of the same pattern hash — one authored, one not —
+  become one "context" in winner counting and consensus.
+- **B13 — Estimated coordinates are labelled with the stop's provenance.** An estimated post has
+  no `source_stop_metadata` row, so serving copies the parent's `coordinate_precision` (`exact`)
+  and `coordinate_source` (`catalogue`, `osm`, …) (serving §2 location rules). The same applies to
+  authored posts positioned by R137.
+- **B14 — Two different "precise locations".** Capture takes, per stop, the `StopPrecise` row with
+  the smallest (lat, lon) (`JdfPostEvidence` 429–434, also `writePostContextCalls` 95–101); the
+  published stop position is the first `StopPrecise` row in source order (`JdfToGtfs` 62–74).
+  With several precise rows per stop, the 300 m radius and region filter use another point than
+  the one published. Latent: whether the merged batch can carry two precise rows for one stop
+  is decided in jdf-merge.
+- **B15 — `--no-estimated-posts` cannot be combined with `--routing-osm-pbf`.** The mode matrix
+  (R001) rejects (evidence-only false, PBF set, estimation false) as invalid, although the help
+  text presents `--no-estimated-posts` as an independent switch. Oběhy never passes both.
+- **B16 — Consolidation drops headings and faces of merged points.** R073 keeps a heading or face
+  only when every member agrees exactly; members that snapped to different edges (allowed: up to
+  30° apart, R070) leave the hypothesis with no heading, so `alignment = 0` in both the heuristic
+  and the learned features. A merged hypothesis is penalised for being confirmed by two sources.
+- **B17 — Contexts of trips that never run participate.** Capture runs on the batch before trips
+  without service days are dropped (R003). Their contexts vote in families, popularity and the
+  learned collective features, and a location chosen only by them consumes an ordinal and can
+  appear in the registry review file without being published (R138).
+- **B18 — Inconsistent metric in the isolation adjustment.** `evaluateReplayPolicy` 231–234 uses
+  111,320 m per degree of latitude, every other heuristic distance 110,540 (0.7 % difference).
+- **B19 — The policy is loaded in a disabled build.** `writeBundleCore` 253–255 loads and validates
+  the policy whatever the mode; a wrong `--post-inference-policy` path fails a build that does not
+  estimate.
+- **B20 — Anchors can lie outside the routing clip.** Routing demands cover pairs of *consecutive
+  route stops* with a location (R150); capture anchors skip neighbours without an anchor and can
+  be several stops away (R045). When an intermediate stop has no location, the rectangles do not
+  necessarily connect, the graph has no path inside the clip, and the context is `disconnected`.
+  Probable, rare.
+- **B21 — Retired registry posts are reused.** `assignInferredPostOrdinals` ignores
+  `RegistryPost.retired`: a new location within 25 m of a retired `est:<k>` takes `<k>` again,
+  although the registry README says ids are never reused and retirement is a status change.
+
+---
+
+## 7. Documentation vs. code
+
+- **PROGRESS.md** says the estimator is opt-in (`--estimated-posts`); in JrUtil
+  `BundleOptions.estimatedPosts` defaults to true and estimation runs whenever a routing PBF is
+  given. The opt-in lives in Oběhy (`BuildConfig.estimated_posts`).
+- **post-scorer README, "Mode gate"**: "tram-only posts (and modeless points within 15 m of them)
+  are rejected for bus lines by the JrUtil evaluator". True for the heuristic (R081); the learned
+  path filters by the modes of the clustered *post* without the 15 m inheritance (R105).
+- **post-scorer README, "Labels"/features**: the Python filter on rejection reason
+  `mode-incompatible` (`build_candidate_table` 408–410) assumes the feature export emits it; the
+  export's diagnostic rows never do (`evaluateWithScorer` 231–238 has no mode gate).
+- **Field names `corridor_distance_metres` and `proximity_distance_metres`** suggest a distance
+  to the corridor; both are the perpendicular distance to the candidate's own snap edge, which
+  for a bay attached via a detour is not on the corridor (R053).
+- **`JdfModel.PostCandidateEvidence` comment**: "conversion-time inference derives any additional
+  compatibility from distinct routed service patterns" — no such derivation exists; only the
+  15 m inheritance of R081.
+- **`JdfToGtfs` 802–805 comment** guards against "the legacy geometry estimator", which no longer
+  exists; and the router tests in `JdfFixupsTests.fs` named after production behaviour exercise
+  only the dead path (R024).
+- **Manifest counter names**: `single_internal_posts` and `physical_internal_posts` count the same
+  set; `centroid_pattern_fallbacks` and `weak_or_unresolved_contexts` count the same set; an `Area`
+  decision is counted as physical (B9).
+- **`resolution.minimum_plausible_score`** is a documented, validated, tested policy field that no
+  production code reads (R089).
+- **`unsafePhysical`** is computed in every heuristic decision and can never be true for a
+  physical decision (R088).
+- **Registry README**: "An inferred post within 25 m of a registered one reuses its ordinal" — only
+  the closest unclaimed pair does (R132); retired posts are reused (B21).
+- **`JdfRoutingCache` comment** "Router code changes invalidate every entry": only when the build
+  embeds `RoutingSourceSha256`; without it the identity is the module version id, which changes on
+  every rebuild (no false hits, many false misses).
+- **Help text** (`Program.fs` 37): `--no-estimated-posts  Disable candidate-based internal post
+  inference` — rejected together with `--routing-osm-pbf` (B15).
+- **`ExecutionMode.CaptureOnly`** exists in the model, but the manifest's `execution_mode` only
+  ever says `live` or `disabled` (capture writes no bundle).
+- **JdfPostScorer header**: "candidates are ordered by hypothesis id" — by (context id, hypothesis
+  id), which is the same within a context.
+
+---
+
+## 8. Duplicated logic
+
+| Concept | Implementations |
+|---|---|
+| Local metric distance | `JdfPostInference.effectiveModes` (110,540 / 111,320 × cos mean lat); `JdfPostPolicyEvaluation.metresBetween` (same); `evaluateReplayPolicy` isolation (111,320 both axes); `JdfPostEvidence.distanceSquared` (same as first, squared); `JdfPostScorer.distances` (cos of the mean of all latitudes of the stop); `StopRegistry.distanceMetres` (111,320 both); Python `features._metric_distance`, `_cluster_stop`, `labels.haversine_metres` (haversine); `osm_snapshot._routing_envelope_geojson` (111,320 both); the router's projected Euclid (EPSG:3035). Rust: `jr_model::geo::distance_m`. |
+| Medoid | `JdfPostEvidence.medoidCoordinate` (sum of **squared** distances); `consolidateReplayRows` (sum of distances); Python `candidate_facts` medoids (sum of distances). |
+| Complete-linkage clustering | `JdfPostScorer.completeLinkage` (tie: diameter, smallest member index); `consolidateReplayRows` merge loop (tie: diameter, joined route point ids). |
+| Pattern hash | `JdfPostEvidence.completePatternHash`; `JdfPostPlan.completePatternHash`. |
+| Authored key | `JdfPostEvidence.authoredPostKey` (trimmed); `JdfPostPlan.authoredPostKey` (trimmed); `JdfBundleTables.scanCallDerivedFacts` (untrimmed, B4). |
+| Usable / emitted call | `JdfPostEvidence.callIsUsable`; `JdfPostPlan.callIsUsable`; `JdfBundleTables.callIsEmitted`; inline in `JdfToGtfs.getGtfsStopTimeRowsInternal` 495–500. |
+| Block roles and context key at a call | `JdfPostEvidence.contextCallsForOrdered`; `JdfToGtfs.inferredSelectionsForTrip` (must agree exactly, or calls miss their selection silently). |
+| Trip direction | `Jdf.tripIsReverse`; inline `tripId % 2L = 0L` in `JdfToGtfs` 475. |
+| Mode codes | `JdfPostEvidence.modeCode`; `JdfBundleTables.transportModeCode`; `JdfGtfsRules.parseTransportMode`; `JdfPostEvidence.routeWork` (context mode → routing mode). |
+| Mode compatibility | `JdfPostInference.modeCompatible`; Python `mode_compatible_expression` (no `v = m` clause); learned `roadModes` {ROAD, BUS, TROLLEYBUS, SHARED} and Python `post_areas` road set. |
+| Angle difference | `JdfPostInference.geometryComponents`; `consolidateReplayRows.headingDifference`; `Osm.angleDifference`; Python `_angle_difference`. |
+| Geometry components | `JdfPostInference.geometryComponents` (policy tolerance); `Osm.candidateGeometry` / `candidateAttachmentGeometry` (literal 90°, 2 m, 50 m; outputs discarded in production). |
+| SHA-256 id helper | `JdfPostEvidence.stableId` (string parts); `JdfPostEvidenceStore.stableId` (obj parts); `replayPhysicalLocationId`; hypothesis hashing; thread identity; `JdfMerger.demandId`; `JdfFixups.candidateId`. |
+| Snapping | `Osm.snap` (grid index); `PrepareKnownSnaps` (edge scan); the dead `Route` rounding cache. |
+| Precise stop location | capture (min lat, lon) vs publication (first in source order) (B14). |
+| Parquet column decoding | `JdfPostEvidenceReader` vs `JdfPostEvidenceStore` (two readers of the same five relations). |
+| Lifecycle classification | `OsmStops` (derive), `JdfModel.validatePostCandidateEvidence` (allowed set), `JdfPostEvidence` (current/obsolete sets). |
+| Source class | `JdfPostEvidenceReader.observationSource`; Python `source_class`, `_source_expression`. |
+| Unspecified id | `jdfUnspecifiedStopId`; literal in `JdfBundleTables` 684. |
+| Median | `medianFloat` (here); other medians elsewhere in JrUtil. |
+
+---
+
+## 9. Performance-relevant structure
+
+Measured numbers recorded in documents (nothing was measured for this inventory): live builds
+with estimated posts, learned-v1 and the routing cache took 19.4 min (2026-10-02) and 16.8 min
+(2026-10-03) for the whole JDF stage; before the cache, a "frozen replay" from a captured pack
+built the bundle in 13 min 04 s against about 43 min 33 s live (PROGRESS, 2026-08-15), i.e.
+routing was about 30 minutes. The default conversion without estimation takes about 3 minutes
+(179.4 s, 2.88 GB). `work/overlay-golden/perf` has no estimator timings.
+
+What dominates, from the code:
+
+1. **Routing per routing key.** Up to 8 × 8 single-pair A* searches per context (R050–R051),
+   then per surviving variant (≤ 3) one forward and one reverse Dijkstra bounded by cost + 1000
+   and 100,000 expansions (R052). The pairwise searches repeat almost the same work; a
+   one-to-many search from each start (or a bidirectional search per start) would give the same
+   set.
+2. **Graph build.** The whole demand-clipped PBF is decoded by OsmSharp and packed into
+   memory-mapped files; then tile fingerprints of every edge are hashed (lazily, at the first
+   cache lookup, `Parallel.For` over 1 M-edge chunks). It overlaps JDF parsing.
+3. **Snap preparation.** Every edge is tested against a 200 m query grid of all precise stops and
+   all observation coordinates (parallel), including coordinates of stops that never get
+   contexts.
+4. **Pack round trip in live builds.** The pack is serialized to Parquet, SHA-256-hashed and fully
+   validated twice (once inside `writePostEvidenceStore`, once in `writeBundleCore`), then read
+   twice more (route points, joined replay). The routing PBF is hashed three times (capture,
+   writer, manifest).
+5. **Replayable row stores.** Every row of every intermediate store is JSON-serialized just to
+   measure it, even when it stays in memory; sorted stores serialize twice; budgets of 1 byte
+   (tests) force file spills.
+6. **Per-stop evaluation.** Consolidation is O(n²) compatibility checks per merge round with a
+   scan of all shared (context, variant) rows per pair, repeated until no merge (O(n³) and more
+   for large stations); it runs twice per stop with the learned scorer (heuristic and learned)
+   and a third time for diagnostics. The isolation adjustment scans all hypotheses per candidate;
+   `externalSupport` is recomputed per family over all context winners of the stop.
+7. **Calls.** The application recomputes usable calls, pattern hashes (SHA-256 of the stop list)
+   and roles for every trip (R135), about 17 million calls nationally.
+
+Caches: snaps (exact coordinate), routed evidence across runs (R056), thread identities and thread
+ends (per graph). Needless recomputation: pattern hashes in R135 (once in capture per pattern,
+again per trip); consolidation per stop up to three times; validation of the same pack twice; the
+heuristic for every stop when only authored contexts need it (learned scorer).
+
+For Rust: the graph and snaps in memory (rule 8), the routing key as the stage-cache grain, the
+pack as in-memory structs, consolidation once per stop shared by both scorers, and the pattern
+index from the model.
+
+---
+
+## 10. Open questions for the architect
+
+- **Q1 — How compatible must Rust packs be with F# packs?** (a) Byte-compatible: same route point,
+  thread, face, corridor ids and payloads, .NET type names in fingerprints, so F# can validate
+  Rust packs and vice versa. (b) Format-compatible: same relations, columns and semantics;
+  router-derived ids follow the Rust router; packs are judged by the decisions they lead to.
+  *Recommendation: (b).* Decisions are compared per context id by chosen observation set
+  (section 5), which needs only R044 and R072 to be identical; the router is rewritten anyway.
+  Keep the manifest key set and versions; bump `router_evidence_version` so a Rust pack is never
+  read as an F# one.
+- **Q2 — Router numeric precision.** F# stores projected coordinates and edge lengths as `float32`
+  (R010). (a) Keep `f32` for decision parity at near-ties; (b) use `f64`. *Recommendation: (b)*,
+  accepting rare decision differences at exact ties, ledgered.
+- **Q3 — Graph tagging defects (B5, B6, B7).** (a) Port as is, ledger, fix after the switch with a
+  recapture and a labelled-accuracy comparison; (b) fix during the port. *Recommendation: (a)* for
+  B6 and B7 (behavioural changes with uncertain effect); fix B5 (link roads) at the switch only if
+  the labelled accuracy does not drop, since it is a plain omission in both filter lists.
+- **Q4 — The heuristic scorer.** Production decides unlabelled contexts with the learned scorer;
+  the heuristic still decides authored posts (R122) and is JrUtil's default without a document.
+  (a) Port the heuristic completely (R080–R088); (b) port only what the learned path and the
+  authored rule need, and decide authored positions with the learned scorer (e.g. unanimous
+  learned `Physical` over the authored contexts); (c) port it but run it only when the document
+  names it. *Recommendation: (c)* now, (b) as a follow-up change once Q5 is settled; the
+  heuristic is also the training baseline of `jdf-export-post-features`.
+- **Q5 — Authored post positions.** Today an authored post is positioned only when an unlabelled
+  call at the same stop published the same hypothesis (B11). (a) Keep; (b) position authored posts
+  from their own contexts' decisions; (c) never position authored posts (keep the stop
+  position). *Recommendation: (b)* after the switch, with (a) for parity until then.
+- **Q6 — Area decisions.** (a) Publish as an estimated post, as now (B9); (b) publish with an
+  `estimated` position flag or a separate kind so consumers know the post is uncertain within an
+  area; (c) treat `Area` as abstention. *Recommendation: (b)* if the model gains a boarding-point
+  position precision; otherwise (a) with a diagnostic count.
+- **Q7 — Stops with one observed position.** They are never estimated (R033). (a) Keep; (b) publish
+  the single candidate as the post when it passes the hard gates. *Recommendation: (a)* for
+  parity; (b) is a separate, measured change.
+- **Q8 — In-memory evidence in live builds.** Rule 8 forbids spill files; F# writes the pack to a
+  temp directory and re-reads it. (a) Build the five relations as typed structs in memory, evaluate
+  directly, write Parquet only in capture mode or when asked; (b) always write and re-read like F#.
+  *Recommendation: (a)*, with a test that writing and re-reading a pack gives identical decisions.
+- **Q9 — Stop ids inside the pack.** The pack stores `jdf:stop:<N>` and the evaluator parses the
+  number back (section 4), against rule 6. (a) Keep the format and parse only at the pack reader in
+  `jr-formats` as a documented format boundary; (b) add integer stop columns in a v3 pack.
+  *Recommendation: (a)*; the in-memory path carries handles, so only persisted packs are parsed.
+- **Q10 — Trips without service days.** (a) Keep them in capture (F#, B17); (b) estimate only for
+  trips that run in the published horizon. *Recommendation: (b)*; ledger the difference.
+- **Q11 — Stop-level sources.** (a) Keep the pack statistic (R101); (b) a reviewed data file listing
+  stop-level catalogues (the README already names them), recorded in the manifest; (c) compute
+  from the national pack and store the list in the pack. *Recommendation: (b)*: it removes the
+  regional-pack drift (section 5, item 6) and makes the model's assumption reviewable; the model
+  file should name the list it was trained with.
+- **Q12 — Diagnostics tables.** (a) Port the four tables; (b) one decisions table plus per-rule
+  counts. *Recommendation: (b)*; B1 and B2 show nobody reads the broken columns.
+- **Q13 — Registry retirement.** (a) Keep reusing retired ordinals (F#); (b) a retired `est:<k>` is
+  never matched again and its ordinal is never reissued. *Recommendation: (b)*, consistent with the
+  registry README; today no row is retired, so parity is unaffected.
+- **Q14 — Learned feature parity.** No test pins the feature values computed from a pack (section
+  5, item 7). (a) Add a fixture: a small pack plus the Python candidate table built from it, and
+  compare Rust features to 1e-9; (b) make the Rust command produce the training candidate table, so
+  Python trains on exactly what serving computes. *Recommendation: (b)* with (a) as its test; it
+  ends the two-implementation drift.
+- **Q15 — Provenance of estimated positions.** (a) Inherit the stop's metadata (F#, B13); (b) a new
+  coordinate source (e.g. `estimator`) and precision `estimated` on boarding points whose position
+  comes from the pass. *Recommendation: (b)*; it needs a model field (boarding-point position with
+  source), which is an architecture decision.
