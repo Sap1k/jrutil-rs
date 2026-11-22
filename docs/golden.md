@@ -69,6 +69,25 @@ contains; the production file names operators it does not): `<root>/jdf/out/fs-r
 lines in three queries), the 12 routes, 125 trips, 1,071 stop times and 272 stops are
 identical.
 
+### Overlay: result (2026-11-22)
+
+`<root>/jdf/build-overlay.toml` builds the road package with PID and IDS JMK overlaid in 38 s
+(the overlay stage 12 s), under 2 GB; F#: 129 s for the base and 234 s, 6.8 GB for the overlay.
+`jrutil compare <root>/jdf/out/fs-ref/overlay-reg <root>/jdf/out/rs-overlay/package --expect
+parity/jdf-overlay.toml` passes. Trips are paired by schedule, since slices and added trips are
+named differently by design: 14,946 by ID, 181,487 by equal content, 1,795 as near pairs, 1,198
+by overlapping dates; no F# trip is left unpaired and 39 trips exist only here.
+
+Stage by stage against F#'s review reports: all 11,020 source stop groups go to the same base
+place by the same method, with the same 510 context inferences; the candidate scores (98,220),
+ambiguous candidates (906) and pattern edits (4,537) are equal row for row; 819,291 of 819,411
+source-trip-dates end the same way (bound to the same base trip, added, or neither).
+
+What differs on purpose: a conflict between two source trips on a date the source owns the
+line keeps the national trip (1,398 trips keep 3,006 trip-dates F# lost); 39 trips of IDS JMK
+line 444 gain authority because the base has no trip-less routes; replaced coordinates say
+`overlay`; national keys hold for the line version's period on every slice.
+
 ### Overlay and post estimator references
 
 Both are F# runs on the registry-numbered chain, made once (2026-11-22):
