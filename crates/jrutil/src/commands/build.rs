@@ -20,5 +20,11 @@ pub fn run(spec_path: &Path) -> ExitCode {
         eprintln!("error: czptt: {error}");
         return ExitCode::FAILURE;
     }
+    if let Some(jdf) = &spec.jdf
+        && let Err(error) = pipeline::jdf(jdf)
+    {
+        eprintln!("error: jdf: {error}");
+        return ExitCode::FAILURE;
+    }
     ExitCode::SUCCESS
 }

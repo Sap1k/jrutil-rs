@@ -35,9 +35,32 @@ route-shapes phase.
 
 ## Road (JDF, posts, overlay)
 
-Prepared when the road port starts (M2), from JrUtil's `scripts/golden/prepare.py` selection:
-about 1,000 JDF batches, the PID and IDS JMK snapshots, the OSM extracts and the geodata
-checkout.
+The slice is the one JrUtil's `scripts/golden/prepare.py` selected for the overlay work
+(`<root>/jdf/inputs`, a link to `work/overlay-golden/inputs`): 2,487 JDF batches (2,229 of
+version 1.11, 256 of 1.10, 2 of 1.8), the stop catalogues, the OSM stop extract, the reviewed
+route rules and the PID and IDS JMK snapshots. `<root>/jdf/build.toml` is the build
+specification; the gazetteers come from the JrUtil checkout and the stop registry from the
+`jrunify-ext-geodata` checkout.
+
+The F# reference is `<root>/jdf/out/fs-ref`: `fix-jdf`, then `merge-jdf --gvd-year=2026
+--reference-date=2026-11-21 --stop-registry=…`, then `jdf-to-bundle` without post estimation
+(`fix`, `merge-reg`, `bundle-reg`; production always passes the registry, so the runs without it
+are not the reference).
+
+### Base package: reference and result (2026-11-22)
+
+F# JrUtil: `fix-jdf` 65 s (3.1 GB peak), `merge-jdf` 32 s, `jdf-to-bundle` 32 s: 129 s for
+92,705 trips and 1,901,717 calls. `jrutil build` on the same inputs: 17.9 s, 2.5 GB peak, the
+whole chain in one process. `jrutil compare <root>/jdf/out/fs-ref/bundle-reg
+<root>/jdf/out/rs/package --expect parity/jdf.toml` passes: fifteen explained categories; every
+trip, call, time, calendar, route stop and zone is identical, as are the stop numbers and the
+registry candidates but one (a stop no published trip uses is no longer offered).
+
+The memory is above the target (half of F#'s peak): every batch is held as read, as fixed and
+as merged at once. To be reduced before the switch.
+
+Still to come on this slice: the post estimator (`bundle-posts`), the regional overlay
+(`overlay`), and the filtered JDF feed.
 
 ## Rules
 

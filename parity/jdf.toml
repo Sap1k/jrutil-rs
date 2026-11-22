@@ -1,0 +1,158 @@
+# Road package: every expected difference between the F# JrUtil reference and jrutil-rs on the
+# road golden slice (docs/golden.md), with its reason. Anything not listed here fails.
+#
+#   jrutil compare <root>/jdf/out/fs-ref/bundle-reg <root>/jdf/out/rs/package --expect parity/jdf.toml
+#
+# The reference is the F# base package built with the stop registry (no post estimation, no
+# overlay). Rule and question numbers refer to docs/rules/jdf-{read,merge,convert}.md and
+# docs/rules/serving.md.
+
+[[label]]
+relation = "service_note"
+column = "source_object_id"
+reason = "Names the source row. F# built it from the distinction its merge assigned to a line version; it now names the version by batch and the row by its own number (jdf-convert verdict Q14)."
+
+[[label]]
+relation = "assignment"
+column = "source_object_id"
+reason = "As for service_note."
+
+[[label]]
+relation = "connection_claim"
+column = "source_object_id"
+reason = "As for service_note: the claim is named by its trip and its position among the trip's claims."
+
+[[label]]
+relation = "travel_restriction"
+column = "source_object_id"
+reason = "As for service_note."
+
+# --- Routes that have no trip ---
+
+[[category]]
+name = "routes-without-trips"
+matches = "route.missing"
+reason = "F# published a line version's route even when none of its trips runs within the timetable year (R430). A route without trips is not published; `jdf_route_without_trips` names each."
+max = 17
+
+[[category]]
+name = "agencies-of-routes-without-trips"
+matches = "agency.missing"
+reason = "Operators whose only routes are the unpublished ones above (R284)."
+max = 4
+
+[[category]]
+name = "integration-of-routes-without-trips"
+matches = "assignment.missing"
+reason = "The integrated-transport membership of the unpublished routes above."
+key = '^route\|integrated_transport\|'
+max = 14
+
+# --- Notes ---
+
+[[category]]
+name = "note-text-trimmed"
+matches = "assignment.missing"
+reason = "F# kept the trailing space of a route note the source cut at its field length. Note text is trimmed."
+key = ' \}$'
+max = 4
+
+[[category]]
+name = "note-text-trimmed-new"
+matches = "assignment.extra"
+reason = "The trimmed form of the notes above."
+key = '^route\|note\|'
+max = 4
+
+[[category]]
+name = "route-notes-once"
+matches = "assignment.missing"
+reason = "Two things F# published that are not published now: the notes of the routes without trips above, and the second copy of a note that two versions of a line, published as one route, both carry with the same text (F# gave each version's copy its own ID; verdict Q14). A differing text is kept as a further note."
+key = '^route\|note\|'
+max = 71
+
+# --- Connection claims ---
+
+[[category]]
+name = "claim-target-zero"
+matches = "connection_claim.missing"
+reason = "A `Navaznosti` row that names no target line, trip or stop holds zeroes there. F# published the zeroes as identifiers (B10); they are absent now."
+key = '\|null\|0\|null\|0\|0\|0\|0\|'
+max = 11
+
+[[category]]
+name = "claim-target-absent"
+matches = "connection_claim.extra"
+reason = "The same claims with absent targets."
+max = 11
+
+# --- Travel restrictions ---
+
+[[category]]
+name = "restriction-without-slot"
+matches = "travel_restriction.missing"
+reason = "F# never resolved a restriction written on a trip's call to the call's route stop and its counterpart (serving question 9): the columns were null in all 457 rows."
+key = '^trip_call\|null\|[^|]+\|\d+\|null\|null\|null\|'
+max = 457
+
+[[category]]
+name = "restriction-with-slot"
+matches = "travel_restriction.extra"
+reason = "The same restrictions, pointing at their call's route stop and at the other call of the group."
+key = '^trip_call\|null\|'
+max = 457
+
+# --- Locations ---
+
+[[category]]
+name = "agency-url-placeholder"
+matches = "agency.changed.url"
+reason = "F# wrote `jrutil://invalid` for an operator without a website, a filler GTFS needed (SERVING-R046). The relation says null; agency.txt in gtfs.zip gets the publisher's URL."
+a = '^jrutil://invalid$'
+b = '^$'
+max = 19
+
+[[category]]
+name = "boarding-point-timezone"
+matches = "location.changed.timezone"
+reason = "F# repeated the stop's time zone on each of its boarding points. A boarding point has the time zone of its place and states none of its own, as in the rail package."
+key = ':(unspecified|post:.+)$'
+a = '^Europe/Prague$'
+b = '^$'
+max = 5967
+
+[[category]]
+name = "wheelchair-boarding-unknown"
+matches = "location.changed.wheelchair_boarding"
+reason = "JDF can say a stop is accessible and cannot say it is not. F# wrote GTFS's 0 (no information) for every other stop; unknown is null, as in the rail package."
+a = '^0$'
+b = '^$'
+max = 11922
+
+[[category]]
+name = "centroid-latitude"
+matches = "location.changed.latitude"
+reason = "A stop matched to several catalogue rows sits at their centroid, and an unmatched one is estimated along its trips. Both are now computed on the sphere (`jr_model::geo`, a local tangent plane), not in the EPSG:3035 grid (jdf-read verdict Q5): under a metre for centroids, up to 50 m for the two route-end estimates."
+max = 48
+
+[[category]]
+name = "centroid-longitude"
+matches = "location.changed.longitude"
+reason = "As for the latitude."
+max = 24
+
+# --- Keys ---
+
+[[category]]
+name = "key-period-narrowed-by-calendar"
+matches = "source_key.missing"
+reason = "A `cis:line_trip` key (and its line's `cis:line` key) held, in F#, for the bounds of the trip's calendar row: the line version's period, narrowed where a note limits the trip to a date range. It now holds for the version's period in every case (R466): line and trip number name the trip for as long as the version is in force."
+key = '^cis:line(_trip)?\|'
+max = 5357
+
+[[category]]
+name = "key-period-of-version"
+matches = "source_key.extra"
+reason = "The same keys with the version's period."
+key = '^cis:line(_trip)?\|'
+max = 5357

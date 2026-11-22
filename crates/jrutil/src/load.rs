@@ -2,6 +2,7 @@
 //! against their manifests and fanning the decoding out over threads happens here.
 
 pub mod czptt;
+pub mod jdf;
 pub mod osm;
 
 use std::path::PathBuf;

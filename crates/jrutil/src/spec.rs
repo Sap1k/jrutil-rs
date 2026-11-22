@@ -13,9 +13,23 @@
 //! companion = "bin/obehy-motis-shapes"
 //! graph = "cache/osr-graph"
 //! cache = "cache/route-shapes"          # optional
+//!
+//! [jdf]
+//! batches = "sources/jdf/batches"       # one ZIP per batch
+//! catalogues = "geodata/other"          # stop catalogues, every *.csv below it
+//! gazetteer = "geodata/gazetteer"       # cz_regions.json.gz, cz_towns.json.gz, eur_towns_countries.csv
+//! osm = "osm/jdf-post-candidates.osm.pbf"
+//! registry = "geodata/registry"         # optional: stops.csv
+//! route_rules = "geodata/routes"        # optional: transport-modes.csv, presentation.csv
+//! timetable_year = 2026
+//! reference_date = "2026-11-21"
+//! output = "out/jdf"
+//! registry_candidates = "out/stop-candidates.csv"   # optional
 //! ```
 
 use std::path::{Path, PathBuf};
+
+use jr_model::Date;
 
 use serde::Deserialize;
 
@@ -24,6 +38,32 @@ use serde::Deserialize;
 pub struct BuildSpec {
     /// The rail package.
     pub czptt: Option<CzpttSpec>,
+    /// The road package.
+    pub jdf: Option<JdfSpec>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct JdfSpec {
+    /// A directory of JDF batches, one ZIP each. A batch is named after its file.
+    pub batches: PathBuf,
+    /// The stop catalogues: a CSV file, or a directory whose `*.csv` files are all read.
+    pub catalogues: PathBuf,
+    /// The directory of the okres, municipality and European town gazetteers.
+    pub gazetteer: PathBuf,
+    /// The OSM extract road stops are located from.
+    pub osm: PathBuf,
+    /// The reviewed stop registry directory; without one every stop number is provisional.
+    pub registry: Option<PathBuf>,
+    /// The reviewed route rules directory.
+    pub route_rules: Option<PathBuf>,
+    pub timetable_year: i16,
+    /// The day the build is for: it decides between overlapping line versions.
+    pub reference_date: Date,
+    /// The package directory to write; it must not exist.
+    pub output: PathBuf,
+    /// Where to write what the stop registry is missing.
+    pub registry_candidates: Option<PathBuf>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -92,6 +132,23 @@ impl BuildSpec {
                 {
                     *target = base.join(&*target);
                 }
+            }
+        }
+        if let Some(jdf) = &mut spec.jdf {
+            for target in [
+                Some(&mut jdf.batches),
+                Some(&mut jdf.catalogues),
+                Some(&mut jdf.gazetteer),
+                Some(&mut jdf.osm),
+                Some(&mut jdf.output),
+                jdf.registry.as_mut(),
+                jdf.route_rules.as_mut(),
+                jdf.registry_candidates.as_mut(),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                *target = base.join(&*target);
             }
         }
         Ok(spec)
