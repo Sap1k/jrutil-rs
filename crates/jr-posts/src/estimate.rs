@@ -4,7 +4,7 @@
 
 use jr_formats::geodata::registry;
 use jr_formats::post_evidence::{Pack, PackError, PackIdentity};
-use jr_geo::routing::{RoutingGraph, RoutingPolicy};
+use jr_geo::routing::{ContextCache, RoutingGraph, RoutingPolicy};
 use jr_jdf::assemble::PostFacts;
 use jr_model::{Diagnostics, EditBuilder, Edits, ReportTable, Timetable};
 
@@ -28,6 +28,8 @@ pub struct EstimateInput<'a> {
     pub registry: &'a [registry::Post],
     /// What the evidence pack says it was captured from.
     pub identity: PackIdentity,
+    /// Routed evidence kept between builds (the capture's); the caller reads its counts.
+    pub cache: Option<&'a mut ContextCache>,
 }
 
 #[derive(Debug)]
@@ -98,6 +100,7 @@ pub fn estimate(
         routing: input.routing,
         constants: &input.policy.constants,
         identity: input.identity,
+        cache: input.cache,
     });
     let mut estimated = estimate_from_pack(
         input.timetable,

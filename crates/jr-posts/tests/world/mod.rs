@@ -248,6 +248,7 @@ impl World {
                     source_id: "test".into(),
                     router: RouterEvidence::Rust,
                 },
+                cache: None,
             },
             &mut Diagnostics::new(),
         )

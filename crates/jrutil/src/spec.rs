@@ -31,6 +31,8 @@
 //! policy = "post-inference/learned-v1.json"
 //! evidence = "out/posts-evidence"       # optional: write the evidence pack
 //! reports = "out/posts-reports"         # optional: the review reports, one CSV each
+//! cache = "cache/routing"               # optional: routed contexts kept between builds
+//! cache_retention_days = 45             # optional: unused cache entries kept this long
 //!
 //! [jdf.overlay]                         # optional: regional feeds overlaid on the road timetable
 //! reports = "out/overlay-reports"       # optional: the review reports, one CSV each
@@ -101,6 +103,16 @@ pub struct PostsSpec {
     pub evidence: Option<PathBuf>,
     /// A directory for the review reports.
     pub reports: Option<PathBuf>,
+    /// A directory for the routing cache: routed contexts kept between builds, so a build
+    /// routes only those whose surroundings changed. Output is the same with or without it.
+    pub cache: Option<PathBuf>,
+    /// How many days an unused cache entry is kept (counted from `reference_date`).
+    #[serde(default = "default_cache_retention_days")]
+    pub cache_retention_days: u32,
+}
+
+fn default_cache_retention_days() -> u32 {
+    45
 }
 
 #[derive(Debug, Deserialize)]
@@ -219,9 +231,13 @@ impl BuildSpec {
             if let Some(posts) = &mut jdf.posts {
                 posts.routing = base.join(&posts.routing);
                 posts.policy = base.join(&posts.policy);
-                for target in [posts.evidence.as_mut(), posts.reports.as_mut()]
-                    .into_iter()
-                    .flatten()
+                for target in [
+                    posts.evidence.as_mut(),
+                    posts.reports.as_mut(),
+                    posts.cache.as_mut(),
+                ]
+                .into_iter()
+                .flatten()
                 {
                     *target = base.join(&*target);
                 }

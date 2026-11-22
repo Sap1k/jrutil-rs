@@ -1,12 +1,12 @@
 //! The constants of the graph and the router (`policy/routing.toml`). Every field belongs to a
 //! named rule; the TOML file says which.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 const BUILTIN: &str = include_str!("../../../../policy/routing.toml");
 
 /// `policy/routing.toml`.
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RoutingPolicy {
     pub graph: GraphPolicy,
@@ -27,7 +27,7 @@ impl RoutingPolicy {
 }
 
 /// A tag with one value.
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TagValue {
     pub key: Box<str>,
@@ -35,7 +35,7 @@ pub struct TagValue {
 }
 
 /// POST-R011–R018.
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GraphPolicy {
     pub highway_key: Box<str>,
@@ -62,7 +62,7 @@ pub struct GraphPolicy {
 }
 
 /// POST-R020.
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SnapPolicy {
     pub radius_m: f64,
@@ -71,7 +71,7 @@ pub struct SnapPolicy {
 }
 
 /// POST-R021.
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SearchPolicy {
     pub max_expansions: usize,
@@ -80,7 +80,7 @@ pub struct SearchPolicy {
 }
 
 /// POST-R050–R053.
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EvidencePolicy {
     pub snaps_per_anchor: usize,

@@ -8,8 +8,12 @@
 //! parallel, shared by every context with that geometry (R055, R057). The pack's rows come out
 //! in exactly the order `post_evidence::check` enforces.
 //!
+//! With a routing cache ([`jr_geo::routing::ContextCache`], R056 replaced), a routing key whose
+//! stored evidence is still valid on this graph is not routed again; the pack is the same
+//! either way.
+//!
 //! Not ported: the capture region and source exclusions of training captures (R005, R047; a
-//! capture with them is never publication input) and the routing cache (R056).
+//! capture with them is never publication input).
 
 use std::collections::{HashMap, HashSet};
 
@@ -19,7 +23,8 @@ use jr_formats::post_evidence::{
     RoutePointEvidence,
 };
 use jr_geo::routing::{
-    self, ContextGeometry, RoutedEvidence, RoutingGraph, RoutingMode, RoutingPolicy,
+    self, ContextCache, ContextGeometry, Lookup, Outcome, RoutedEvidence, RoutingGraph,
+    RoutingMode, RoutingPolicy,
 };
 use jr_jdf::assemble::PostFacts;
 use jr_model::{Coord, Rule, Timetable};
@@ -204,6 +209,9 @@ pub struct CaptureInput<'a> {
     pub routing: &'a RoutingPolicy,
     pub constants: &'a Constants,
     pub identity: PackIdentity,
+    /// Routed evidence kept between builds; looked up per routing key and updated with what
+    /// was routed. Its counts stay with it: they never enter the pack or the summary.
+    pub cache: Option<&'a mut ContextCache>,
 }
 
 /// Counts of the capture.
@@ -368,7 +376,7 @@ pub fn capture(input: CaptureInput<'_>) -> Capture {
 
     // R046, R055, R057: one routed computation per distinct routing key.
     let mut keys: HashMap<String, usize> = HashMap::new();
-    let mut unique: Vec<usize> = Vec::new();
+    let mut unique: Vec<(usize, String)> = Vec::new();
     let context_keys: Vec<usize> = work
         .iter()
         .enumerate()
@@ -384,29 +392,54 @@ pub fn capture(input: CaptureInput<'_>) -> Capture {
                     &coordinate_key(&w.next),
                 ],
             );
-            *keys.entry(key).or_insert_with(|| {
-                unique.push(row);
+            *keys.entry(key.clone()).or_insert_with(|| {
+                unique.push((row, key));
                 unique.len() - 1
             })
         })
         .collect();
     counts.routing_keys = unique.len();
-    let routed: Vec<RoutedEvidence> = unique
+    let cache = input.cache;
+    let regions = cache.as_ref().map(|_| input.graph.regions());
+    let shared = cache.as_deref();
+    let graph = &input.graph;
+    let routed: Vec<(RoutedEvidence, Option<Outcome>)> = unique
         .par_iter()
-        .map(|&row| {
-            let w = &work[row];
+        .map(|(row, key)| {
+            let w = &work[*row];
             let own = stop_coords(w.stop).unwrap_or_default();
-            input.graph.routed_evidence(
-                &ContextGeometry {
-                    mode: RoutingMode::for_context_mode(&w.mode),
-                    previous: &w.previous,
-                    route_points: &own,
-                    next: &w.next,
-                },
-                input.routing,
-            )
+            let context = ContextGeometry {
+                mode: RoutingMode::for_context_mode(&w.mode),
+                previous: &w.previous,
+                route_points: &own,
+                next: &w.next,
+            };
+            let (Some(cache), Some(regions)) = (shared, regions.as_ref()) else {
+                return (graph.routed_evidence(&context, input.routing), None);
+            };
+            let invalidated = match cache.lookup(key, graph, regions) {
+                Lookup::Hit(evidence) => return (evidence, Some(Outcome::Reused)),
+                Lookup::Invalidated => true,
+                Lookup::Miss => false,
+            };
+            let (evidence, read) = graph.routed_evidence_read(&context, input.routing);
+            let entry = ContextCache::prepare(graph, regions, &evidence, read);
+            (evidence, Some(Outcome::Routed { invalidated, entry }))
         })
         .collect();
+    let routed: Vec<RoutedEvidence> = match cache {
+        Some(cache) => routed
+            .into_iter()
+            .zip(&unique)
+            .map(|((evidence, outcome), (_, key))| {
+                if let Some(outcome) = outcome {
+                    cache.record(key, outcome);
+                }
+                evidence
+            })
+            .collect(),
+        None => routed.into_iter().map(|(evidence, _)| evidence).collect(),
+    };
     drop(input.graph);
 
     let mut contexts = Contexts::default();

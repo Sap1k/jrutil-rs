@@ -34,6 +34,9 @@ enum Command {
         /// The build specification (TOML).
         #[arg(long)]
         spec: PathBuf,
+        /// Neither read nor write any cache.
+        #[arg(long)]
+        no_cache: bool,
     },
     /// Check a production package against the serving and production contracts.
     Validate {
@@ -61,7 +64,7 @@ enum Command {
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
-        Command::Build { spec } => commands::build::run(&spec),
+        Command::Build { spec, no_cache } => commands::build::run(&spec, !no_cache),
         Command::Validate { package } => commands::validate::run(&package),
         Command::Compare {
             reference,

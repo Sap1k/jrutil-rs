@@ -35,6 +35,8 @@ serde_json = { version = "1.0", features = ["float_roundtrip", "preserve_order"]
 toml = { version = "1.2", features = ["preserve_order"] }
 thiserror = "2.0"
 sha2 = "0.11"
+# The routing context cache (jr-geo): a compact, exact serde encoding.
+postcard = { version = "1.2", default-features = false, features = ["use-std"] }
 # Serving relations (jr-publish) and the post evidence pack (jr-posts).
 arrow-array = "60.1"
 arrow-schema = "60.1"

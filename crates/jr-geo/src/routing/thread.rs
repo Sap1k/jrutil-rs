@@ -5,8 +5,10 @@ use std::fmt;
 use std::hash::BuildHasherDefault;
 
 use jr_model::Rule;
+use serde::{Deserialize, Serialize};
 
 use super::graph::{ROAD, RoutingGraph, SERVICE, TRAM};
+use super::reader::Reader;
 use super::search::IdHasher;
 
 /// The thread of an edge is the maximal chain of nodes with exactly one onward neighbour that
@@ -39,7 +41,7 @@ const FNV128_OFFSET: u128 = 0x6c62_272e_07bb_0142_62b8_2175_6295_c58d;
 const FNV128_PRIME: u128 = 0x0000_0000_0100_0000_0000_0000_0000_013b;
 
 /// The identity of a thread.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ThreadId(pub u128);
 
 impl fmt::Display for ThreadId {
@@ -49,7 +51,7 @@ impl fmt::Display for ThreadId {
 }
 
 /// A thread and the direction an edge runs along it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct DirectedThread {
     pub thread: ThreadId,
     pub reversed: bool,
@@ -63,7 +65,7 @@ impl fmt::Display for DirectedThread {
 }
 
 /// The side of a thread a point lies on, in the thread's own direction.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum FaceSide {
     Centre,
     Right,
@@ -71,7 +73,7 @@ pub enum FaceSide {
 }
 
 /// A thread and a side of it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Face {
     pub thread: ThreadId,
     pub side: FaceSide,
@@ -89,7 +91,7 @@ impl fmt::Display for Face {
 }
 
 /// A corridor's identity (R023).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct CorridorId(pub u64);
 
 impl fmt::Display for CorridorId {
@@ -107,6 +109,18 @@ fn fnv128(bytes: &[u8]) -> u128 {
 impl RoutingGraph {
     /// R023.
     pub fn corridor_id(&self, edges: &[u32]) -> CorridorId {
+        Reader::new(self).corridor_id(edges)
+    }
+
+    /// R022: the edge's thread and whether the edge runs against it.
+    pub fn directed_thread(&self, edge: u32) -> DirectedThread {
+        Reader::new(self).directed_thread(edge)
+    }
+}
+
+impl Reader<'_> {
+    /// R023.
+    pub(super) fn corridor_id(&self, edges: &[u32]) -> CorridorId {
         let mut hash = FNV64_OFFSET;
         for &edge in edges {
             for value in [
@@ -123,8 +137,8 @@ impl RoutingGraph {
     }
 
     /// R022: the edge's thread and whether the edge runs against it.
-    pub fn directed_thread(&self, edge: u32) -> DirectedThread {
-        let flags = self.edge_flags[edge as usize];
+    pub(super) fn directed_thread(&self, edge: u32) -> DirectedThread {
+        let flags = self.edge_flags(edge);
         let mask = flags & (ROAD | TRAM);
         let class = flags & SERVICE;
         let (left, right) = (self.edge_from(edge), self.edge_to(edge));
@@ -160,7 +174,7 @@ impl RoutingGraph {
         let mut found = [u32::MAX; 2];
         let mut count = 0;
         let fits = |edge: u32| {
-            let flags = self.edge_flags[edge as usize];
+            let flags = self.edge_flags(edge);
             flags & mask != 0 && (mask == TRAM || flags & SERVICE == class)
         };
         let others = self

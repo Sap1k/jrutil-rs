@@ -4,12 +4,14 @@
 use std::collections::BTreeMap;
 
 use jr_model::{Coord, Rule};
+use serde::{Deserialize, Serialize};
 
 use crate::laea::{self, Laea};
 
 use super::geometry::angle_difference;
 use super::graph::{RoutingGraph, RoutingMode};
 use super::policy::RoutingPolicy;
+use super::reader::{ReadBox, Reader};
 use super::search::{Direction, Path};
 use super::snap::Snap;
 use super::thread::{CorridorId, DirectedThread, Face};
@@ -48,7 +50,7 @@ pub const POST_R052: Rule = Rule {
 };
 
 /// `routing_availability`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum Availability {
     Available,
     Unavailable,
@@ -64,7 +66,7 @@ impl Availability {
 }
 
 /// `invariant_failure_reason` of a variant.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum VariantFailure {
     SnapUnavailable,
     Disconnected,
@@ -80,7 +82,7 @@ impl VariantFailure {
 }
 
 /// `invariant_failure_reason` of an attachment.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum AttachmentFailure {
     BaselineUnavailable,
     SearchLimit,
@@ -103,7 +105,7 @@ impl AttachmentFailure {
 
 /// One row of `corridor_variants` without the context's identifiers (section 2.3). Costs and
 /// lengths in metres; thread and corridor identities print as the pack writes them.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CorridorVariant {
     pub variant_rank: u32,
     pub corridor_id: Option<CorridorId>,
@@ -130,7 +132,7 @@ pub struct CorridorVariant {
 }
 
 /// One row of `route_point_evidence` without the context's identifiers (section 2.3).
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Attachment {
     pub variant_rank: u32,
     /// The variant's.
@@ -165,7 +167,7 @@ pub struct Attachment {
 
 /// The routed evidence of one context: the variants by rank, and per variant the attachment of
 /// every route point in the order given.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct RoutedEvidence {
     pub variants: Vec<CorridorVariant>,
     pub attachments: Vec<Vec<Attachment>>,
@@ -247,6 +249,41 @@ impl RoutingGraph {
         coords: &[Coord],
         policy: &RoutingPolicy,
     ) -> Vec<Snap> {
+        Reader::new(self).anchor_snaps(mode, coords, policy)
+    }
+
+    /// R050–R053: the routed evidence of one context. Pure; call it from any number of
+    /// threads.
+    pub fn routed_evidence(
+        &self,
+        context: &ContextGeometry<'_>,
+        policy: &RoutingPolicy,
+    ) -> RoutedEvidence {
+        Reader::new(self).routed_evidence(context, policy)
+    }
+
+    /// [`Self::routed_evidence`] and the box of everything it read: the result is a function
+    /// of the context, the policy, the router code and the graph within that box's tiles
+    /// ([`super::Regions`]).
+    pub fn routed_evidence_read(
+        &self,
+        context: &ContextGeometry<'_>,
+        policy: &RoutingPolicy,
+    ) -> (RoutedEvidence, ReadBox) {
+        let reader = Reader::new(self);
+        let evidence = reader.routed_evidence(context, policy);
+        (evidence, reader.read_box())
+    }
+}
+
+impl Reader<'_> {
+    /// R050: the anchor snaps of one side.
+    pub(super) fn anchor_snaps(
+        &self,
+        mode: RoutingMode,
+        coords: &[Coord],
+        policy: &RoutingPolicy,
+    ) -> Vec<Snap> {
         let mut seen = Vec::new();
         let mut per_thread: BTreeMap<DirectedThread, Snap> = BTreeMap::new();
         for &coord in coords {
@@ -273,9 +310,8 @@ impl RoutingGraph {
         snaps
     }
 
-    /// R050–R053: the routed evidence of one context. Pure; call it from any number of
-    /// threads.
-    pub fn routed_evidence(
+    /// R050–R053: the routed evidence of one context.
+    pub(super) fn routed_evidence(
         &self,
         context: &ContextGeometry<'_>,
         policy: &RoutingPolicy,

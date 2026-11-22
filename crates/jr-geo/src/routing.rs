@@ -10,11 +10,14 @@
 //! [`RoutingPolicy`] (`policy/routing.toml`).
 
 mod build;
+mod cache;
 mod evidence;
 mod geometry;
 mod graph;
 mod input;
 mod policy;
+mod reader;
+mod region;
 mod search;
 mod snap;
 mod thread;
@@ -25,6 +28,7 @@ pub use build::{
     GraphBuilder, GraphError, POST_R011, POST_R012, POST_R013, POST_R014, POST_R015, POST_R016,
     POST_R018,
 };
+pub use cache::{CACHE_FORMAT, CacheCounts, CacheError, ContextCache, Lookup, Outcome, Prepared};
 pub use evidence::{
     Attachment, AttachmentFailure, Availability, ContextGeometry, CorridorVariant, POST_R050,
     POST_R051, POST_R052, RoutedEvidence, VariantFailure,
@@ -33,6 +37,8 @@ pub use geometry::POST_R053;
 pub use graph::{GraphCounts, POST_R010, POST_R017, POST_R019, RoutingGraph, RoutingMode};
 pub use input::{OsmMember, OsmMemberType, OsmNode, OsmRelation, OsmTags, OsmWay};
 pub use policy::{EvidencePolicy, GraphPolicy, RoutingPolicy, SearchPolicy, SnapPolicy, TagValue};
+pub use reader::ReadBox;
+pub use region::{RegionDigest, Regions, StableEdge, TILE_CELLS, TileRange};
 pub use search::{POST_R021, Path, RouteFailure};
 pub use snap::{POST_R020, Snap};
 pub use thread::{CorridorId, DirectedThread, Face, FaceSide, POST_R022, POST_R023, ThreadId};

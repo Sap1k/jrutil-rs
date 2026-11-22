@@ -9,8 +9,8 @@ use jr_formats::geodata::registry::{self, Post};
 use jr_formats::osm::{self, Elements};
 use jr_formats::post_policy::{self, PolicyDocument};
 use jr_geo::routing::{
-    GraphBuilder, OsmMember, OsmMemberType, OsmNode, OsmRelation, OsmWay, RoutingGraph,
-    RoutingPolicy,
+    ContextCache, GraphBuilder, OsmMember, OsmMemberType, OsmNode, OsmRelation, OsmWay,
+    RoutingGraph, RoutingPolicy,
 };
 use sha2::{Digest, Sha256};
 
@@ -96,6 +96,24 @@ pub fn graph(path: &Path, policy: &RoutingPolicy) -> Result<(RoutingGraph, Strin
     drop(bytes);
     let graph = builder.finish().map_err(|error| invalid(path, error))?;
     Ok((graph, digest))
+}
+
+/// The routing cache stored at `path` for a run on `day`: empty when there is no file, and
+/// empty with a warning when the file cannot be read or decoded (the cache only saves time).
+pub fn routing_cache(path: &Path, day: i32) -> ContextCache {
+    if !path.is_file() {
+        return ContextCache::new(day);
+    }
+    let decoded = fs::read(path)
+        .map_err(|error| error.to_string())
+        .and_then(|bytes| ContextCache::from_bytes(&bytes, day).map_err(|error| error.to_string()));
+    decoded.unwrap_or_else(|error| {
+        eprintln!(
+            "warning: routing cache {}: {error}; starting empty",
+            path.display()
+        );
+        ContextCache::new(day)
+    })
 }
 
 pub fn policy(path: &Path) -> Result<PolicyDocument, LoadError> {

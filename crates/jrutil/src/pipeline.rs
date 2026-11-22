@@ -9,6 +9,7 @@ use std::time::Instant;
 use jr_enrich::{presentation, rail_coordinates, route_stops, shapes};
 use jr_formats::geodata::synonyms;
 use jr_geo::names::Analyzer;
+use jr_geo::routing::ContextCache;
 use jr_jdf::{assemble, fix, merge};
 use jr_model::edit::{ApplyError, Precedence};
 use jr_model::{Diagnostics, Edits, Timetable, apply};
@@ -173,7 +174,8 @@ impl Stages {
 
 /// The rail package: compile, locate the railway points, connect replacement buses to their
 /// trains, order the route stops, publish.
-pub fn czptt(spec: &CzpttSpec) -> Result<(), BuildError> {
+/// `use_cache`: whether the shapes cache the specification names is used.
+pub fn czptt(spec: &CzpttSpec, use_cache: bool) -> Result<(), BuildError> {
     let mut stages = Stages::new("czptt");
     let mut diagnostics = Diagnostics::new();
     let precedence: Precedence = policy("precedence.toml");
@@ -221,7 +223,13 @@ pub fn czptt(spec: &CzpttSpec) -> Result<(), BuildError> {
 
     let route_shapes = match &spec.shapes {
         Some(shapes_spec) => {
-            let summary = route_shapes(&mut timetable, shapes_spec, &precedence, &mut diagnostics)?;
+            let summary = route_shapes(
+                &mut timetable,
+                shapes_spec,
+                use_cache,
+                &precedence,
+                &mut diagnostics,
+            )?;
             stages.done("route shapes");
             Some(summary)
         }
@@ -278,7 +286,8 @@ pub fn czptt(spec: &CzpttSpec) -> Result<(), BuildError> {
 /// The road package: admit each batch and match its stops, merge the batches, apply the
 /// international filter, assemble the timetable, present the routes, order the route stops,
 /// publish.
-pub fn jdf(spec: &JdfSpec) -> Result<(), BuildError> {
+/// `use_cache`: whether the routing cache the specification names is read and written.
+pub fn jdf(spec: &JdfSpec, use_cache: bool) -> Result<(), BuildError> {
     let mut stages = Stages::new("jdf");
     let mut diagnostics = Diagnostics::new();
     let precedence: Precedence = policy("precedence.toml");
@@ -444,6 +453,10 @@ pub fn jdf(spec: &JdfSpec) -> Result<(), BuildError> {
             &mut timetable,
             &assembled.post_facts,
             posts,
+            PostsRun {
+                use_cache,
+                day: day_number(spec.reference_date),
+            },
             spec.registry.as_deref(),
             &digest_of_lines(&inputs),
             &precedence,
@@ -572,6 +585,7 @@ fn estimate_posts(
     timetable: &mut Timetable,
     facts: &jr_jdf::assemble::PostFacts,
     spec: &PostsSpec,
+    run: PostsRun,
     registry: Option<&Path>,
     inputs_digest: &str,
     precedence: &Precedence,
@@ -588,6 +602,19 @@ fn estimate_posts(
         Some(directory) => load::posts::registry_posts(directory)?,
         None => Vec::new(),
     };
+    let cache_file = spec
+        .cache
+        .as_ref()
+        .filter(|_| run.use_cache)
+        .map(|directory| {
+            directory.join(format!(
+                "{CACHE_PREFIX}{}{CACHE_SUFFIX}",
+                ContextCache::identity(&routing)
+            ))
+        });
+    let mut cache = cache_file
+        .as_deref()
+        .map(|path| load::posts::routing_cache(path, run.day));
     let (graph, routing_sha256) = load::posts::graph(&spec.routing, &routing)?;
     stages.done("routing graph");
 
@@ -606,9 +633,13 @@ fn estimate_posts(
                 source_id: "national-jdf".to_owned(),
                 router: RouterEvidence::Rust,
             },
+            cache: cache.as_mut(),
         },
         diagnostics,
     )?;
+    if let (Some(cache), Some(path)) = (&cache, &cache_file) {
+        save_routing_cache(path, cache, spec.cache_retention_days)?;
+    }
     pass(timetable, estimated.edits, precedence, diagnostics)?;
 
     let io = |path: &Path| {
@@ -641,7 +672,61 @@ fn estimate_posts(
         write_reports(directory, &estimated.reports)?;
     }
     stages.done("post estimator");
+    if let Some(cache) = &cache {
+        let counts = cache.counts(spec.cache_retention_days);
+        eprintln!(
+            "[jdf] routing cache: {} reused, {} invalidated, {} routed, {} kept",
+            counts.reused, counts.invalidated, counts.routed, counts.kept
+        );
+    }
     Ok(section(&estimated.summary))
+}
+
+/// How the posts stage runs: with or without its cache, and on which day.
+#[derive(Clone, Copy, Debug)]
+struct PostsRun {
+    use_cache: bool,
+    /// The build's reference date as days since 1970-01-01: the routing cache's clock.
+    day: i32,
+}
+
+fn day_number(date: jr_model::Date) -> i32 {
+    date.since(jr_model::Date::constant(1970, 1, 1))
+        .map_or(0, |span| span.get_days())
+}
+
+/// The routing cache's file name around its identity.
+const CACHE_PREFIX: &str = "routing-contexts-";
+const CACHE_SUFFIX: &str = ".bin";
+
+/// Writes the routing cache under a temporary name and renames it into place; the caches of
+/// other identities in the directory are removed.
+fn save_routing_cache(
+    path: &Path,
+    cache: &ContextCache,
+    retention_days: u32,
+) -> Result<(), BuildError> {
+    let io = |path: &Path| {
+        let path = path.display().to_string();
+        move |source| BuildError::Write { path, source }
+    };
+    let directory = path.parent().unwrap_or(Path::new("."));
+    std::fs::create_dir_all(directory).map_err(io(directory))?;
+    let temporary = path.with_extension("bin.tmp");
+    std::fs::write(&temporary, cache.to_bytes(retention_days)).map_err(io(&temporary))?;
+    std::fs::rename(&temporary, path).map_err(io(path))?;
+    let name = path.file_name().and_then(|name| name.to_str());
+    for entry in std::fs::read_dir(directory).map_err(io(directory))? {
+        let entry = entry.map_err(io(directory))?;
+        let other = entry.file_name();
+        let Some(other) = other.to_str() else {
+            continue;
+        };
+        if other.starts_with(CACHE_PREFIX) && other.ends_with(CACHE_SUFFIX) && Some(other) != name {
+            std::fs::remove_file(entry.path()).map_err(io(&entry.path()))?;
+        }
+    }
+    Ok(())
 }
 
 /// Review reports, one CSV each, in a directory.
@@ -852,6 +937,7 @@ fn write_registry_candidates(
 fn route_shapes(
     timetable: &mut Timetable,
     spec: &ShapesSpec,
+    use_cache: bool,
     precedence: &Precedence,
     diagnostics: &mut Diagnostics,
 ) -> Result<shapes::Summary, ApplyError> {
@@ -862,7 +948,7 @@ fn route_shapes(
         companion::run(
             &spec.companion,
             &spec.graph,
-            spec.cache.as_deref(),
+            spec.cache.as_deref().filter(|_| use_cache),
             &plan.patterns_csv(),
         )
     };

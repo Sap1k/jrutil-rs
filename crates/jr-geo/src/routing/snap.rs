@@ -7,6 +7,7 @@ use crate::laea::Laea;
 
 use super::graph::{RoutingGraph, RoutingMode};
 use super::policy::SnapPolicy;
+use super::reader::Reader;
 
 /// A position snaps to every edge of the mode whose segment lies within the snap radius (the
 /// distance to the nearest point of the segment; fraction 0 on a zero-length edge). The
@@ -47,7 +48,8 @@ pub(super) struct SnapIndex {
     edges: Vec<u32>,
 }
 
-fn cell(value: f64) -> i32 {
+/// The snap cell of a projected coordinate.
+pub(super) fn cell(value: f64) -> i32 {
     (value / CELL_M).floor() as i32
 }
 
@@ -102,8 +104,17 @@ impl SnapIndex {
         index
     }
 
+    /// Every cell with its edges, in key order.
+    pub(super) fn cells(&self) -> impl Iterator<Item = ((i32, i32), &[u32])> {
+        self.keys.iter().enumerate().map(|(i, &cell_key)| {
+            let cell = ((cell_key >> 32) as u32 as i32, cell_key as u32 as i32);
+            let edges = &self.edges[self.offsets[i] as usize..self.offsets[i + 1] as usize];
+            (cell, edges)
+        })
+    }
+
     /// Edges whose box touches the square around the point, possibly with repeats.
-    fn near(&self, point: Laea, radius: f64, out: &mut Vec<u32>) {
+    pub(super) fn near(&self, point: Laea, radius: f64, out: &mut Vec<u32>) {
         for x in cell(point.easting - radius)..=cell(point.easting + radius) {
             for y in cell(point.northing - radius)..=cell(point.northing + radius) {
                 if let Ok(i) = self.keys.binary_search(&key(x, y)) {
@@ -116,7 +127,7 @@ impl SnapIndex {
     }
 }
 
-impl RoutingGraph {
+impl Reader<'_> {
     /// The nearest point of an edge to a position.
     pub(super) fn snap_to_edge(&self, point: Laea, edge: u32) -> Snap {
         let a = self.xy(self.edge_from(edge));
@@ -149,9 +160,9 @@ impl RoutingGraph {
     }
 
     /// R020: the snaps of a projected position for a mode, nearest first.
-    pub fn snap(&self, mode: RoutingMode, point: Laea, policy: &SnapPolicy) -> Vec<Snap> {
+    pub(super) fn snap(&self, mode: RoutingMode, point: Laea, policy: &SnapPolicy) -> Vec<Snap> {
         let mut edges = Vec::new();
-        self.snaps.near(point, policy.radius_m, &mut edges);
+        self.grid_edges(point, policy.radius_m, &mut edges);
         edges.sort_unstable();
         edges.dedup();
         let mut snaps: Vec<Snap> = edges
@@ -171,5 +182,12 @@ impl RoutingGraph {
             snaps.retain(|snap| snap.distance_m <= nearest + policy.band_m);
         }
         snaps
+    }
+}
+
+impl RoutingGraph {
+    /// R020: the snaps of a projected position for a mode, nearest first.
+    pub fn snap(&self, mode: RoutingMode, point: Laea, policy: &SnapPolicy) -> Vec<Snap> {
+        Reader::new(self).snap(mode, point, policy)
     }
 }

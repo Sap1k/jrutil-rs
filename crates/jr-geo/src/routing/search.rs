@@ -8,6 +8,7 @@ use jr_model::Rule;
 
 use super::graph::{RoutingGraph, RoutingMode};
 use super::policy::SearchPolicy;
+use super::reader::Reader;
 use super::snap::Snap;
 
 /// The shortest path from one snap to another is an A* search whose states are directed edges:
@@ -131,6 +132,19 @@ pub(super) enum Direction {
 impl RoutingGraph {
     /// R021: the cheapest path from `start` to `finish`.
     pub fn route(
+        &self,
+        mode: RoutingMode,
+        start: &Snap,
+        finish: &Snap,
+        policy: &SearchPolicy,
+    ) -> Result<Path, RouteFailure> {
+        Reader::new(self).route(mode, start, finish, policy)
+    }
+}
+
+impl Reader<'_> {
+    /// R021: the cheapest path from `start` to `finish`.
+    pub(super) fn route(
         &self,
         mode: RoutingMode,
         start: &Snap,

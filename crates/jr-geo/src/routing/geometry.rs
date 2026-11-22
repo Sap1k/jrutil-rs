@@ -4,8 +4,8 @@ use jr_model::Rule;
 
 use crate::laea::Laea;
 
-use super::graph::RoutingGraph;
 use super::policy::EvidencePolicy;
+use super::reader::Reader;
 use super::snap::Snap;
 use super::thread::{Face, FaceSide};
 
@@ -53,7 +53,7 @@ fn signed_offset(dx: f64, dy: f64, from: Laea, to: Laea) -> f64 {
         / dx.hypot(dy).max(MIN_LENGTH_M)
 }
 
-impl RoutingGraph {
+impl Reader<'_> {
     /// The point `window` metres from the snap along the path, forwards or backwards; the
     /// path's end when it is shorter.
     fn along(&self, path: &[u32], index: usize, snap: &Snap, window: f64, forward: bool) -> Laea {
