@@ -27,11 +27,19 @@ compiler: it reads files it is given, never the network, and the same inputs giv
 The pipeline order is declared once, in `crates/jrutil/src/pipeline.rs`:
 
 ```
-czptt:  compile → coordinates → [rail platforms] → [connections] → [foreign overlay]
-        → route-stop order → shapes → publish
-jdf:    compile → coordinates → route rules → posts → regional overlay → presentation
-        → route-stop order → shapes → publish        (+ filtered-jdf from the pre-overlay model)
+czptt:  compile → coordinates → replacement-bus connections → route-stop order → [shapes]
+        → publish
+jdf:    read batches → stop matching ┐ (per batch, in parallel)
+                        merge ◄──────┘ (in batch-name order; calls only for versions that win)
+        → international filter → assemble → [post estimator] → presentation
+        → [regional overlay → presentation] → route-stop order → publish
+        (+ the filtered feed, from the timetable as it stands before the overlay)
 ```
+
+Stages in brackets run when the build specification asks for them. Planned and not built: rail
+platforms, connections from the infrastructure manager's list, a foreign rail overlay
+(`[rail platforms]`, `[connections]`, `[foreign overlay]` after the rail coordinates), and
+shapes for road.
 
 ## Crates
 
