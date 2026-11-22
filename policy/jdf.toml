@@ -1,0 +1,97 @@
+# Constants of the JDF road compiler (crates/jr-jdf; docs/rules/jdf-read.md, jdf-merge.md).
+# Every value here belongs to a named rule; the rule IDs are given per section.
+
+# JDF-R025: the Pevnykod codes the JDF specification lists (1.10 and 1.11 together, accepted in
+# any version). A code outside this list, or an all-digit code that is not a day number of
+# [calendar] days_of_week, is diagnosed.
+[fixed_codes]
+known = [
+    "X", "+", "R", "#", "|", "<", "@", "%", "W", "w", "x", "~", "(", ")", "$", "{", "}", "[",
+    "O", "v", "§", "A", "B", "C", "T", "!", "t", "b", "U", "S", "J", "P", "I", "s",
+]
+
+# JDF-R028: what a field means where the batch's format version (1.8/1.9) does not have it, or
+# (detour, grouped) where a 1.10/1.11 batch leaves the flag empty.
+[version_defaults]
+route_distinction = 0
+agency_distinction = 0
+# Linky dopravní prostředek: `A` is a bus.
+transport_mode = "A"
+detour = false
+grouped = false
+
+# JDF-R256–R264: the day attributes of a trip (Pevnykod codes).
+[calendar]
+# R262: working days (not Saturday, Sunday or a public holiday).
+working_days = "X"
+# R261: Sundays and public holidays.
+sundays_and_holidays = "+"
+# R263: an all-digit code is a day of the week; the numbers of Monday … Sunday.
+days_of_week = [1, 2, 3, 4, 5, 6, 7]
+
+# JDF-R255–R260: what each Caskody type (field 5) does to the running days.
+# runs_in = R260, runs_also = R258, runs_only = R256, does_not_run = R257,
+# odd_weeks / even_weeks = R259 (types 5/6 undated in practice, 7/8 "od – do"; treated alike).
+[calendar.note_types]
+"1" = "runs_in"
+"2" = "runs_also"
+"3" = "runs_only"
+"4" = "does_not_run"
+"5" = "odd_weeks"
+"6" = "even_weeks"
+"7" = "odd_weeks"
+"8" = "even_weeks"
+
+# JDF-R265: Czech public holidays (zákon 245/2000 Sb.). `since` is the first year a date is a
+# holiday, where it matters.
+[holidays]
+fixed = [
+    { month = 1, day = 1 },
+    { month = 5, day = 1 },
+    { month = 5, day = 8 },
+    { month = 7, day = 5 },
+    { month = 7, day = 6 },
+    { month = 9, day = 28 },
+    { month = 10, day = 28 },
+    { month = 11, day = 17 },
+    { month = 12, day = 24 },
+    { month = 12, day = 25 },
+    { month = 12, day = 26 },
+]
+# JDF-R266: days relative to Easter Sunday: Good Friday (a holiday since 2016), Easter Monday.
+easter = [
+    { offset = -2, since = 2016 },
+    { offset = 1 },
+]
+
+# JDF-R269–R281: the international route filter.
+[international]
+# R269: "regional-adjacent" (classify and filter) or "keep-all" (no filter, no decisions).
+policy = "regional-adjacent"
+# R270: the country a stop with an okres and no country is in; the domestic country of R271,
+# R274 and R275.
+domestic_country = "CZ"
+# R270: country codes compared as the filter's canonical code (after trimming and upper-casing).
+country_aliases = { AT = "A", DE = "D" }
+# R271: route types (Linky typ linky) declared international.
+declared_international_route_types = ["M", "N", "P"]
+# R274: the foreign countries regional cross-border service may reach.
+adjacent_countries = ["A", "D", "PL", "SK"]
+# R276: the envelope of a qualifying trip, in timetable kilometres (strictly greater rejects).
+max_span_km = 120.0
+max_foreign_depth_km = 60.0
+integrated_max_span_km = 200.0
+integrated_max_foreign_depth_km = 80.0
+
+# R274, R277, R281: the reason texts recorded with a decision.
+[international.reasons]
+domestic = "domestic"
+regional_adjacent = "regional_adjacent"
+international_metadata_without_foreign_geography = "international_metadata_without_foreign_geography"
+foreign_only_trip = "foreign_only_trip"
+unknown_stop_country = "unknown_stop_country"
+non_adjacent_country = "non_adjacent_country"
+missing_timetable_kilometres = "missing_timetable_kilometres"
+trip_span_exceeds_limit = "trip_span_exceeds_limit"
+foreign_depth_exceeds_limit = "foreign_depth_exceeds_limit"
+no_qualifying_cross_border_trip = "no_qualifying_cross_border_trip"

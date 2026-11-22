@@ -1878,3 +1878,17 @@ sorting (R236).
   (R205): drop both?
 - **Q20 — Unreferenced places and their candidates.** Prune stops used by no published trip
   regardless of the filter policy, and list registry candidates only for published stops (B14)?
+
+---
+
+## 11. Rules added by the rewrite
+
+#### JDF-R283 — Attribute numbers without a `Pevnykod` row
+- **What:** an attribute slot (`Zastavky`, `Zaslinky`, `Spoje`, `Zasspoje`, `Altdop`) whose number
+  has no `Pevnykod.txt` row is ignored: it contributes no fixed code (in particular no day
+  attribute to the calendar, R261–R264).
+- **Why:** F# resolved attribute numbers with `Array.find` and aborted the batch (and with it the
+  run) on a dangling number (B22). A batch is not rejected for one bad reference.
+- **Constants:** none.
+- **Diagnostic:** `jdf_attribute_dangling` (warning), once per batch and number, with the count
+  of slots.

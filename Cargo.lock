@@ -714,6 +714,7 @@ name = "jr-geo"
 version = "0.1.0"
 dependencies = [
  "jr-model",
+ "rayon",
  "serde",
  "toml",
 ]
@@ -722,9 +723,15 @@ dependencies = [
 name = "jr-jdf"
 version = "0.1.0"
 dependencies = [
+ "jiff",
  "jr-formats",
  "jr-geo",
  "jr-model",
+ "rayon",
+ "serde",
+ "sha2",
+ "thiserror",
+ "toml",
 ]
 
 [[package]]
