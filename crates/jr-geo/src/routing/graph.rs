@@ -11,10 +11,12 @@ use super::snap::SnapIndex;
 /// node and, within it, in source order (the order F#'s counting scatter gives, so ties broken by
 /// edge number fall the same way). Positions are WGS84 projected to EPSG:3035
 /// ([`crate::laea`]) in `f64` (verdict Q2): snapping, headings and sides are plane geometry in
-/// that projection. An edge's length is the great-circle distance of its nodes
-/// (`jr_model::geo::distance_m`), so costs and path lengths are in metres on the ground; within
-/// the 75 m of a snap the projection's scale error (under 0.4 % in Czechia) is far below OSM
-/// accuracy. In memory, no temporary files.
+/// that projection. An edge's length is the plane distance of its projected nodes, as in F#:
+/// costs, path lengths, excesses and the heading window are projected metres, which in Czechia
+/// run about 0.2 % longer than the ground. The learned scorer was trained on evidence measured
+/// this way, so the unit is part of its input contract (format-compatible, verdict Q1); this
+/// is not a great-circle distance and `jr_model::geo::distance_m` is deliberately not used.
+/// In memory, no temporary files.
 pub const POST_R010: Rule = Rule {
     id: "POST-R010",
     summary: "graph vertices are the OSM nodes of eligible ways, projected to EPSG:3035",
@@ -123,8 +125,6 @@ pub struct RoutingGraph {
     pub(super) restrictions: Vec<Restriction>,
     /// A bit per node: is it the via node of a restriction?
     pub(super) restricted_via: Vec<u64>,
-    /// Lower bound of edge length over projected length, for the A* heuristic.
-    pub(super) heuristic_scale: f64,
     pub(super) snaps: SnapIndex,
     pub(super) counts: GraphCounts,
 }

@@ -13,7 +13,9 @@ use super::policy::SnapPolicy;
 /// candidates are ordered by (distance, edge, fraction), the nearest few kept, and of those
 /// only the ones within the band of the nearest. A stop stands next to one road, but its
 /// recorded position may be closer to a parallel one; the band keeps both without dragging in
-/// the whole neighbourhood. Any position can be snapped (F# prepared the snaps of the
+/// the whole neighbourhood. A snap past the end of a segment is the end node itself, so a
+/// position nearest to a node is equally near every edge meeting there and the edge order
+/// decides, as with F#. Any position can be snapped (F# prepared the snaps of the
 /// coordinates it would route and found none for others; it routed only prepared ones, so
 /// the result is the same).
 pub const POST_R020: Rule = Rule {
@@ -112,9 +114,15 @@ impl RoutingGraph {
                 / length_squared)
                 .clamp(0.0, 1.0)
         };
-        let snapped = Laea {
-            easting: a.easting + fraction * dx,
-            northing: a.northing + fraction * dy,
+        // A snap clamped to an end is that node exactly, so the edges meeting there are equally
+        // near and the edge order decides between them (F#'s f32 coordinates gave the same).
+        let snapped = if fraction == 1.0 {
+            b
+        } else {
+            Laea {
+                easting: a.easting + fraction * dx,
+                northing: a.northing + fraction * dy,
+            }
         };
         Snap {
             edge,

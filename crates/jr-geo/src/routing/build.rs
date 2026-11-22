@@ -1,6 +1,5 @@
 //! Building the graph from OSM facts (POST-R011–R018).
 
-use jr_model::geo::distance_m;
 use jr_model::{Coord, Rule};
 use rayon::prelude::*;
 
@@ -84,7 +83,6 @@ struct RawEdge {
     from: u32,
     to: u32,
     way: i64,
-    length: f64,
     flags: u8,
 }
 
@@ -239,12 +237,10 @@ impl<'p> GraphBuilder<'p> {
                 && !self.blocked[l as usize]
                 && !self.blocked[r as usize]
             {
-                let length = distance_m(self.coords[l as usize], self.coords[r as usize]);
                 let edge = |from, to| RawEdge {
                     from,
                     to,
                     way: way.id,
-                    length,
                     flags,
                 };
                 if forward {
@@ -350,10 +346,6 @@ impl<'p> GraphBuilder<'p> {
         };
         let edge_from = pick(&|e| compact[e.from as usize]);
         let edge_to = pick(&|e| compact[e.to as usize]);
-        let edge_length: Vec<f64> = order
-            .iter()
-            .map(|&i| self.edges[i as usize].length)
-            .collect();
         let edge_way: Vec<i64> = order.iter().map(|&i| self.edges[i as usize].way).collect();
         let edge_flags: Vec<u8> = order
             .iter()
@@ -361,6 +353,16 @@ impl<'p> GraphBuilder<'p> {
             .collect();
         drop(order);
         drop(std::mem::take(&mut self.edges));
+        // R010: lengths in the projection's plane, as F# measured them (the scorer was trained
+        // on these costs).
+        let edge_length: Vec<f64> = edge_from
+            .par_iter()
+            .zip(&edge_to)
+            .map(|(&from, &to)| {
+                let (a, b) = (node_xy[from as usize], node_xy[to as usize]);
+                (b.easting - a.easting).hypot(b.northing - a.northing)
+            })
+            .collect();
         let edge_cost: Vec<f64> = edge_length
             .iter()
             .zip(&edge_flags)
@@ -400,18 +402,6 @@ impl<'p> GraphBuilder<'p> {
             restricted_via[r.via as usize / 64] |= 1 << (r.via % 64);
         }
 
-        // The A* heuristic measures in the projection; scaled by the smallest ratio of ground
-        // length to projected length of any edge it stays a lower bound of every path's cost.
-        let heuristic_scale = (0..edge_count)
-            .into_par_iter()
-            .filter_map(|e| {
-                let (a, b) = (node_xy[edge_from[e] as usize], node_xy[edge_to[e] as usize]);
-                let projected = (b.easting - a.easting).hypot(b.northing - a.northing);
-                (projected >= 1.0).then(|| edge_length[e] / projected)
-            })
-            .reduce(|| 1.0, f64::min)
-            .min(1.0);
-
         let snaps = SnapIndex::new(&node_xy, &edge_from, &edge_to);
         let mut counts = self.counts;
         counts.nodes = node_count;
@@ -435,7 +425,6 @@ impl<'p> GraphBuilder<'p> {
             in_edges,
             restrictions,
             restricted_via,
-            heuristic_scale,
             snaps,
             counts,
         })

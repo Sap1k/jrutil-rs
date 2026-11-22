@@ -150,7 +150,6 @@ impl RoutingGraph {
         let heuristic = |node: u32| {
             let p = self.xy(node);
             ((p.easting - centre.0).hypot(p.northing - centre.1) - radius).max(0.0)
-                * self.heuristic_scale
         };
         let mut labels: EdgeMap<(f64, u32)> = EdgeMap::default();
         let mut queue = BinaryHeap::new();

@@ -156,9 +156,17 @@ fn post_r010_vertices_are_the_nodes_edges_touch_in_osm_order() {
     assert_eq!(graph.node_count(), 3);
     let ids: Vec<i64> = (0..3).map(|n| graph.node_osm_id(n)).collect();
     assert_eq!(ids, [10, 20, 30]);
+    // Lengths are plane distances in EPSG:3035, as F# measured them: here about 0.2 % longer
+    // than the 100 m on the ground.
     let first = graph.outgoing(graph.node_of(10).unwrap()).start;
-    let length = graph.edge_length(first);
-    assert!((length - 100.0).abs() < 0.5, "{length}");
+    let (a, b) = (
+        laea::from_wgs84(at(0.0, 0.0)),
+        laea::from_wgs84(at(100.0, 0.0)),
+    );
+    let plane = (b.easting - a.easting).hypot(b.northing - a.northing);
+    assert!((graph.edge_length(first) - plane).abs() < 1e-6);
+    let ground = jr_model::geo::distance_m(at(0.0, 0.0), at(100.0, 0.0));
+    assert!(plane > ground, "{plane} {ground}");
 }
 
 fn flags(tags: Tags) -> (bool, bool) {
@@ -442,6 +450,24 @@ fn post_r020_snaps_the_nearest_edges_of_the_mode_within_the_band() {
     // Past the end of a segment the snap is its end node.
     let beyond = snaps(&graph, RoutingMode::Bus, 130.0, 10.0);
     assert_eq!(beyond[0].fraction, 1.0);
+
+    // Outside a bend, past the ends of both segments, every edge meeting at the node is
+    // exactly as near (the snap is the node itself) and edge order decides.
+    let bend = Osm::default()
+        .node(1, 0.0, 0.0)
+        .node(2, 100.0, 0.0)
+        .node(3, 100.0, 100.0)
+        .way(1, &[1, 2, 3], residential())
+        .build();
+    let at_node = snaps(&bend, RoutingMode::Bus, 110.0, -10.0);
+    assert_eq!(at_node.len(), 4);
+    assert!(
+        at_node
+            .iter()
+            .all(|s| s.distance_m == at_node[0].distance_m)
+    );
+    assert!(at_node.windows(2).all(|pair| pair[0].edge < pair[1].edge));
+    assert!(at_node.iter().all(|s| s.point == at_node[0].point));
 }
 
 #[test]
