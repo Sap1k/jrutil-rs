@@ -25,7 +25,7 @@ use jr_model::{Diagnostics, Feed, Rule, Severity, Timetable};
 use serde::Serialize;
 
 pub use policy::Policy;
-pub use post_facts::PostFacts;
+pub use post_facts::{PostFacts, StopFacts, TripFacts};
 
 use crate::merge::Merged;
 
@@ -181,6 +181,12 @@ pub fn assemble(
         &mut timetable,
         &mut local,
     );
+    let modes: Vec<Box<str>> = lines
+        .lines
+        .iter()
+        .map(|line| post_facts::mode_letter(line.mode).into())
+        .collect();
+    let post_facts = post_facts::build(&merged, &modes, &points, &published);
 
     let violations = timetable.check();
     if !violations.is_empty() {
@@ -237,7 +243,7 @@ pub fn assemble(
     Ok(Assembled {
         timetable,
         lines,
-        post_facts: PostFacts::default(),
+        post_facts,
         summary,
     })
 }

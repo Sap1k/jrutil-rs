@@ -2375,3 +2375,17 @@ Rules the Rust evaluator and pack reader (`jr_posts::evaluate`, `jr_formats::pos
 - **Pinned by:** `post_r182_relations_of_one_pack_name_one_source`.
 - **Constants:** none.
 - **Diagnostic:** error.
+
+#### POST-R190 — The route distinction of a context
+- **What:** a context's `route_distinction` (and so its context and block IDs) is the ordinal of
+  its line version among the surviving merged versions of the licence, from 1, in merge order
+  (`jr_jdf::assemble::TripFacts::distinction`). F#'s merged JDF numbered every input version of
+  a licence in batch order, versions the merge later dropped included; the Rust merge keeps only
+  the survivors, so the two differ for about half the golden slice's patterns.
+- **Where:** `jr_jdf::assemble::post_facts::build`, `jr_posts::capture`.
+- **Why:** the distinction only keeps versions of one line apart; decisions do not depend on its
+  value. Equal context IDs with F# (training labels join on them, POST-R044) need the merge to
+  carry each version's input ordinal: a field of `jr_jdf::merge::Version` (raised).
+- **Pinned by:** `post_r041_identical_trips_share_their_contexts` (contexts per pattern).
+- **Constants:** none.
+- **Diagnostic:** none.

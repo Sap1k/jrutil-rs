@@ -19,6 +19,8 @@ pub struct Constants {
     pub geometry: GeometryConstants,
     pub heuristic: HeuristicConstants,
     pub learned: LearnedConstants,
+    pub capture: CaptureConstants,
+    pub registry: RegistryConstants,
 }
 
 impl Constants {
@@ -76,6 +78,25 @@ pub struct LearnedConstants {
     pub maximum_area_diameter_m: f64,
     pub excess_cap_m: f64,
     pub complex_stop_posts: usize,
+}
+
+/// POST-R030–R033, R040.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CaptureConstants {
+    pub max_distance_from_stop_m: f64,
+    pub current_lifecycles: Vec<Box<str>>,
+    pub obsolete_lifecycles: Vec<Box<str>>,
+    pub minimum_route_points: usize,
+    pub modes: Vec<Box<str>>,
+}
+
+/// POST-R132.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RegistryConstants {
+    pub inferred_post_match_m: f64,
+    pub metres_per_degree: f64,
 }
 
 /// The policy document's v2 values as the evaluator uses them: a missing key is 0 or `false`

@@ -10,7 +10,9 @@
 //!
 //! See ARCHITECTURE.md and `docs/rules/posts.md`.
 
+pub mod capture;
 pub mod estimate;
 pub mod evaluate;
+pub mod plan;
 
 pub use estimate::{EstimateError, EstimateInput, Estimated, estimate};

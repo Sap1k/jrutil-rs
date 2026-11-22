@@ -3,10 +3,10 @@
 use std::collections::{BTreeSet, HashMap};
 
 use jr_formats::post_policy;
+use jr_posts::evaluate::Constants;
 use jr_posts::evaluate::scorer::{
     self, Candidate, ContextKey, Feature, Model, Resolution, cluster_areas, cluster_posts,
 };
-use jr_posts::evaluate::{Constants, RULES};
 use serde_json::Value;
 
 const GOLDEN: &str = include_str!("data/post-scorer-golden.json");
@@ -221,14 +221,15 @@ fn every_rule_has_a_heading_in_the_ledger() {
         .filter_map(|line| line.strip_prefix("#### "))
         .filter_map(|heading| heading.split_whitespace().next())
         .collect();
-    let missing: Vec<&str> = RULES
+    let all = jr_posts::estimate::rules();
+    let missing: Vec<&str> = all
         .iter()
         .map(|rule| rule.id)
         .filter(|id| !headings.contains(id))
         .collect();
     assert!(missing.is_empty(), "undocumented rules: {missing:?}");
     let mut seen = BTreeSet::new();
-    for rule in RULES {
+    for rule in &all {
         assert!(seen.insert(rule.id), "{} is declared twice", rule.id);
         assert!(!rule.summary.is_empty());
     }

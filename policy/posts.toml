@@ -46,3 +46,21 @@ maximum_area_diameter_m = 40.0
 excess_cap_m = 1000.0
 # POST-R108: a stop with this many posts or more uses the `complex` threshold.
 complex_stop_posts = 3
+
+[capture]
+# POST-R030: an observation is admitted when it lies this close to the stop's precise position.
+max_distance_from_stop_m = 300.0
+# POST-R032: lifecycles (trimmed, lower-cased) that make a route point current, and obsolete
+# (B8 kept: `current`, `temporary` and `proposed` are neither).
+current_lifecycles = ["", "active"]
+obsolete_lifecycles = ["abandoned", "disused", "construction"]
+# POST-R033 (verdict Q7): a stop is estimated only with at least this many route points.
+minimum_route_points = 2
+# POST-R040: the JDF transport mode letters whose trips have contexts (bus, tram, trolleybus).
+modes = ["A", "E", "T"]
+
+[registry]
+# POST-R132: a registered `est:<k>` post is reused by a location within this distance ...
+inferred_post_match_m = 25.0
+# ... measured with this many metres per degree on both axes (F# `StopRegistry.distanceMetres`).
+metres_per_degree = 111320.0

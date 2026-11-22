@@ -29,8 +29,9 @@ mod rules;
 pub mod scorer;
 
 pub use policy::{
-    Constants, EvaluationPolicy, GeometryConstants, HeuristicConstants, LearnedConstants,
-    MetricConstants, ModeConstants, PolicyError, ScorerChoice, Settings,
+    CaptureConstants, Constants, EvaluationPolicy, GeometryConstants, HeuristicConstants,
+    LearnedConstants, MetricConstants, ModeConstants, PolicyError, RegistryConstants, ScorerChoice,
+    Settings,
 };
 pub use rules::*;
 
@@ -153,7 +154,7 @@ pub struct AuthoredPosition {
 }
 
 /// Counts per rule (R123).
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize)]
 pub struct Counts {
     /// Contexts decided (R120).
     pub contexts: usize,
