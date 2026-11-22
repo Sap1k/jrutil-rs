@@ -6,6 +6,7 @@ pub mod areas;
 pub mod laea;
 pub mod names;
 pub mod plane;
+pub mod routing;
 pub mod stop_index;
 pub mod towns;
 

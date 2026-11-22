@@ -151,3 +151,196 @@ fn truncated_file_is_an_error() {
     let file = pbf();
     assert!(osm::tagged_nodes(&file[..file.len() - 3], |_| {}).is_err());
 }
+
+fn way(id: u64, refs: &[i64], tags: &[(u64, u64)]) -> Vec<u8> {
+    let mut way = Vec::new();
+    number(&mut way, 1, id);
+    bytes(&mut way, 2, &packed(tags.iter().map(|t| t.0)));
+    bytes(&mut way, 3, &packed(tags.iter().map(|t| t.1)));
+    let mut previous = 0;
+    let deltas: Vec<u64> = refs
+        .iter()
+        .map(|&node| {
+            let delta = zigzag(node - previous);
+            previous = node;
+            delta
+        })
+        .collect();
+    bytes(&mut way, 8, &packed(deltas));
+    way
+}
+
+/// Members as (type, id, role string index).
+fn relation(id: u64, members: &[(u64, i64, u64)], tags: &[(u64, u64)]) -> Vec<u8> {
+    let mut relation = Vec::new();
+    number(&mut relation, 1, id);
+    bytes(&mut relation, 2, &packed(tags.iter().map(|t| t.0)));
+    bytes(&mut relation, 3, &packed(tags.iter().map(|t| t.1)));
+    bytes(&mut relation, 8, &packed(members.iter().map(|m| m.2)));
+    let mut previous = 0;
+    let deltas: Vec<u64> = members
+        .iter()
+        .map(|&(_, member, _)| {
+            let delta = zigzag(member - previous);
+            previous = member;
+            delta
+        })
+        .collect();
+    bytes(&mut relation, 9, &packed(deltas));
+    bytes(&mut relation, 10, &packed(members.iter().map(|m| m.0)));
+    relation
+}
+
+/// A file with untagged dense nodes, a way and a restriction relation in one block, and a
+/// second block holding a relation group before a node group.
+fn routing_pbf() -> Vec<u8> {
+    let strings = string_table(&[
+        "",
+        "highway",
+        "residential",
+        "type",
+        "restriction",
+        "no_left_turn",
+        "from",
+        "to",
+        "via",
+        "barrier",
+        "bollard",
+    ]);
+    let mut file = Vec::new();
+    blob(&mut file, "OSMHeader", b"\x22\x0eOsmSchema-V0.6", false);
+    let mut dense = Vec::new();
+    bytes(&mut dense, 1, &packed([1, 1, 1].map(zigzag)));
+    bytes(
+        &mut dense,
+        8,
+        &packed([500_000_000, 10_000, 10_000].map(zigzag)),
+    );
+    bytes(&mut dense, 9, &packed([140_000_000, 0, 0].map(zigzag)));
+    bytes(&mut dense, 10, &packed([0, 9, 10, 0, 0]));
+    let mut nodes = Vec::new();
+    bytes(&mut nodes, 2, &dense);
+    let mut ways = Vec::new();
+    bytes(&mut ways, 3, &way(10, &[1, 2, 3], &[(1, 2)]));
+    bytes(&mut ways, 3, &way(11, &[3, 2], &[]));
+    let mut relations = Vec::new();
+    bytes(
+        &mut relations,
+        4,
+        &relation(100, &[(1, 10, 6), (0, 2, 8), (1, 11, 7)], &[(3, 4), (4, 5)]),
+    );
+    let mut block = Vec::new();
+    bytes(&mut block, 1, &strings);
+    bytes(&mut block, 2, &nodes);
+    bytes(&mut block, 2, &ways);
+    bytes(&mut block, 2, &relations);
+    blob(&mut file, "OSMData", &block, true);
+
+    let mut block = Vec::new();
+    bytes(&mut block, 1, &strings);
+    bytes(&mut block, 2, &relations);
+    let mut nodes = Vec::new();
+    bytes(&mut nodes, 1, &plain_node(7, 1, 2, &[]));
+    bytes(&mut block, 2, &nodes);
+    blob(&mut file, "OSMData", &block, false);
+    file
+}
+
+fn describe(element: osm::Element<'_>) -> String {
+    let tags = |tags: osm::Tags<'_>| {
+        tags.iter()
+            .map(|(k, v)| format!("{k}={v}"))
+            .collect::<Vec<_>>()
+            .join(";")
+    };
+    match element {
+        osm::Element::Node(node) => format!(
+            "n{} {:.4},{:.4} [{}]",
+            node.id,
+            node.coord.lat,
+            node.coord.lon,
+            tags(node.tags)
+        ),
+        osm::Element::Way(way) => format!("w{} {:?} [{}]", way.id, way.refs, tags(way.tags)),
+        osm::Element::Relation(relation) => {
+            let members: Vec<String> = relation
+                .members
+                .iter()
+                .map(|m| format!("{:?}{}:{}", m.kind, m.id, m.role))
+                .collect();
+            format!("r{} {members:?} [{}]", relation.id, tags(relation.tags))
+        }
+    }
+}
+
+#[test]
+fn every_element_in_file_order() {
+    let mut seen = Vec::new();
+    osm::read_blocks(routing_pbf().as_slice(), osm::Elements::ALL, |block| {
+        seen.push(block.elements().map(describe).collect::<Vec<_>>());
+    })
+    .expect("PBF");
+    assert_eq!(
+        seen,
+        [
+            vec![
+                "n1 50.0000,14.0000 []".to_owned(),
+                "n2 50.0010,14.0000 [barrier=bollard]".to_owned(),
+                "n3 50.0020,14.0000 []".to_owned(),
+                "w10 [1, 2, 3] [highway=residential]".to_owned(),
+                "w11 [3, 2] []".to_owned(),
+                r#"r100 ["Way10:from", "Node2:via", "Way11:to"] [type=restriction;restriction=no_left_turn]"#.to_owned(),
+            ],
+            vec![
+                r#"r100 ["Way10:from", "Node2:via", "Way11:to"] [type=restriction;restriction=no_left_turn]"#.to_owned(),
+                "n7 0.0000,0.0000 []".to_owned(),
+            ],
+        ]
+    );
+}
+
+#[test]
+fn element_selection_skips_what_is_not_asked_for() {
+    let mut seen = Vec::new();
+    let only_tagged = osm::Elements::TAGGED_NODES;
+    osm::read_blocks(routing_pbf().as_slice(), only_tagged, |block| {
+        seen.extend(block.elements().map(describe));
+    })
+    .expect("PBF");
+    assert_eq!(seen, ["n2 50.0010,14.0000 [barrier=bollard]"]);
+}
+
+#[test]
+fn many_blobs_are_visited_in_file_order() {
+    let strings = string_table(&["", "k", "v"]);
+    let mut file = Vec::new();
+    for id in 0..200 {
+        let mut nodes = Vec::new();
+        bytes(&mut nodes, 1, &plain_node(id, id, id, &[(1, 2)]));
+        let mut block = Vec::new();
+        bytes(&mut block, 1, &strings);
+        bytes(&mut block, 2, &nodes);
+        blob(&mut file, "OSMData", &block, id % 2 == 0);
+    }
+    let mut ids = Vec::new();
+    osm::read_blocks(file.as_slice(), osm::Elements::ALL, |block| {
+        ids.extend(block.nodes().map(|node| node.id));
+    })
+    .expect("PBF");
+    assert_eq!(ids, (0..200).collect::<Vec<_>>());
+}
+
+#[test]
+fn a_bad_string_index_in_a_way_is_an_error() {
+    let strings = string_table(&["", "highway"]);
+    let mut ways = Vec::new();
+    bytes(&mut ways, 3, &way(1, &[1, 2], &[(1, 9)]));
+    let mut block = Vec::new();
+    bytes(&mut block, 1, &strings);
+    bytes(&mut block, 2, &ways);
+    let mut file = Vec::new();
+    blob(&mut file, "OSMData", &block, false);
+    assert!(osm::read_blocks(file.as_slice(), osm::Elements::ALL, |_| {}).is_err());
+    // Not decoded, not checked.
+    assert!(osm::read_blocks(file.as_slice(), osm::Elements::TAGGED_NODES, |_| {}).is_ok());
+}

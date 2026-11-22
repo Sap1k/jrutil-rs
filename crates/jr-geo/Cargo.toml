@@ -11,6 +11,8 @@ publish.workspace = true
 jr-model.workspace = true
 serde.workspace = true
 rayon.workspace = true
+toml.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 toml.workspace = true

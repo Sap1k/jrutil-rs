@@ -1,0 +1,78 @@
+# Constants of the road and tram routing graph and router (crates/jr-geo/src/routing.rs,
+# jr_geo::routing::RoutingPolicy). Rule IDs are those of docs/rules/posts.md; every value
+# belongs to the rule named above it. Tag values are compared trimmed and lower-cased; keys and
+# relation roles exactly.
+
+# POST-R011–R018: what the graph reads from OSM tags.
+[graph]
+# R011: a way is a road when its highway is one of these, it is not closed and it is not
+# generally blocked without a transit permission. Link roads are missing on purpose (B5, kept
+# until the switch: verdict Q3).
+highway_key = "highway"
+road_highways = [
+    "motorway", "trunk", "primary", "secondary", "tertiary", "unclassified", "residential",
+    "living_street", "service", "road", "busway",
+]
+# R011, R014: a way with this highway, or with any of the closed keys (any value), is closed.
+closed_highway = "construction"
+closed_keys = ["construction", "abandoned", "disused", "proposed"]
+# R011: a negative value of a general access key blocks a road unless a transit access key is
+# affirmative. R012: a negative transit access key makes the road severe. R016: an affirmative
+# transit access key exempts a barrier node.
+general_access_keys = ["access", "vehicle", "motor_vehicle"]
+transit_access_keys = ["bus", "psv"]
+affirmative_access = ["yes", "designated", "official", "permissive"]
+negative_access = ["no", "private"]
+# R012: every edge of a severe road costs this many times its length.
+restricted_access_factor = 8.0
+# R013: the highway value of the service class.
+service_highway = "service"
+# R014: tram track.
+tram = { key = "railway", value = "tram" }
+# R015: one-way values; a roundabout without a one-way value is forward only. `oneway:bus`
+# and `oneway:psv` are not read (B7, kept until the switch: verdict Q3).
+oneway_key = "oneway"
+oneway_forward = ["yes", "true", "1"]
+oneway_backward = ["-1", "reverse"]
+roundabout = { key = "junction", value = "roundabout" }
+# R016: a node with this key (any value) is a barrier (B6, kept until the switch: verdict Q3).
+barrier_key = "barrier"
+# R018: turn restrictions: a relation with this key and from/via/to members; a value with the
+# prefix is an "only" restriction. `restriction:bus`, `except` and via ways are not read (B7).
+restriction_key = "restriction"
+restriction_only_prefix = "only_"
+restriction_from_role = "from"
+restriction_via_role = "via"
+restriction_to_role = "to"
+
+# POST-R020: snapping a coordinate to the edges of a mode.
+[snap]
+# Edges whose segment lies within this distance (metres, in the projection) are candidates.
+radius_m = 75.0
+# The nearest this many are kept, ordered by (distance, edge, fraction) ...
+candidates = 8
+# ... and of those only the ones within this distance of the nearest.
+band_m = 15.0
+
+# POST-R021: the shortest path. The two ceilings are format constants of the evidence pack
+# (`maximum_search_states`, `maximum_search_distance_metres`).
+[search]
+max_expansions = 100000
+max_cost_m = 30000.0
+# A target or attachment cost below zero by less than this is taken as zero.
+tolerance_m = 0.0001
+
+# POST-R050–R053: routed evidence of one context.
+[evidence]
+# R050: snaps taken per anchor coordinate, and anchor snaps kept per side.
+snaps_per_anchor = 4
+max_anchor_snaps = 8
+# R051: corridor variants kept (format constant `capture_ceilings.maximum_corridor_variants`).
+max_variants = 3
+# R052: how far beyond a variant's cost an attachment is searched (format constant
+# `capture_ceilings.routed_excess_metres`).
+horizon_m = 1000.0
+# R053: the corridor direction is taken between the points this far before and after the
+# attachment along the path; a lateral offset within the band is the centre face.
+heading_window_m = 15.0
+face_centre_band_m = 2.0

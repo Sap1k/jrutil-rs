@@ -34,7 +34,7 @@ impl Field<'_> {
     }
 }
 
-fn zigzag(value: u64) -> i64 {
+pub(super) fn zigzag(value: u64) -> i64 {
     ((value >> 1) as i64) ^ -((value & 1) as i64)
 }
 
