@@ -8,6 +8,8 @@
 
 pub mod archive;
 pub mod czptt;
+pub mod geodata;
+pub mod jdf;
 pub mod kadr;
 pub mod osm;
 pub mod snapshot;

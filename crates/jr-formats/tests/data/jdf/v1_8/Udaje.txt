@@ -1,0 +1,2 @@
+"100307","1","PRAŽSKÁ INTEGROVANÁ DOPRAVA(PID) Platí smluvní pøepravní podmínky a Tarif PID.";
+"100307","3","Grafikony:  PD: V10625 So+Ne: V10626";

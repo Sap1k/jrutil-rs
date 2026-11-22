@@ -1,0 +1,5 @@
+stop_id,post_key,lat,lon,status,note
+1,est:1,49.349118,14.050297,active,
+3,est:1,48.984773,14.451155,active,
+3,est:2,48.984927,14.452431,active,
+123,post:2,,,active,

@@ -1,0 +1,2 @@
+# JDF fixtures are CP1250 with CR LF record ends, byte for byte as the source delivers them.
+* -text

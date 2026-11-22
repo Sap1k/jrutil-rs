@@ -1,0 +1,9 @@
+id,town,district,nearby_place,okres,country,lat,lon,status,note
+1,Předotice,Nová Hospoda,sil.č.20,PI,CZ,49.348988,14.050396,active,
+2,Velký Újezd,rozc.Výkleky,,OL,CZ,49.567379,17.494325,active,
+3,České Budějovice,Evžena Rošického,,CB,CZ,48.984850,14.451845,active,
+42,Zádub,Závišín,,CH,CZ,49.975885,12.743880,active,
+42,Zádub-Závišín,,,CH,CZ,49.975885,12.743880,active,
+123,Mykolajiv,AS Pivdenna,,,UA,,,active,
+28113,"Petrovice,Krásný Les",Petrovice,Krásný Les,UL,CZ,50.767976,13.935255,active,
+44,Zádub,,,CH,CZ,,,retired,"duplicate of 42, merged_into:42 (review 2026-03)"

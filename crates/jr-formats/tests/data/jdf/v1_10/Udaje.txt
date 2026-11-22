@@ -1,0 +1,4 @@
+"199090","1","Centrální pøestupní zastávka - pobyt v zastávce cca 4 - 7 minut","1";
+"199090","2","Pražská integrovaná doprava. Platí smluvní pøepravní podmínky a Tarif PID.","1";
+"199090","3","Jízda s pøedem zakoupenou jízdenkou. Doplòkový prodej jízdenek s pøirážkou u øidièe.","1";
+"199090","4","Grafikony:  PD: V90 So: V90 Ne: V90","1";
