@@ -87,6 +87,11 @@ pub(crate) struct Points {
     pub points: HashMap<(u32, Point), BoardingPointId>,
 }
 
+/// A name part as a fact of its own: a part the source wrote as blanks says nothing.
+fn stated(part: &Option<Box<str>>) -> Option<Box<str>> {
+    part.clone().filter(|text| !text.trim().is_empty())
+}
+
 /// R415's name.
 pub(crate) fn stop_name(name: &Spelling) -> String {
     match (name.district.as_deref(), name.nearby_place.as_deref()) {
@@ -161,9 +166,9 @@ pub(crate) fn build(
             source_code: None,
             description: None,
             municipality: Some(stop.name.town.clone()),
-            district_name: stop.name.district.clone(),
+            district_name: stated(&stop.name.district),
             district_code: stop.name.okres.clone(),
-            nearby_place: stop.name.nearby_place.clone(),
+            nearby_place: stated(&stop.name.nearby_place),
             country: stop.name.country.clone(),
             position,
             url: None,

@@ -10,7 +10,7 @@ use jr_model::geo::distance_m;
 use super::evidence::Evidence;
 use super::names::{WorkStop, first_part};
 use super::policy::Policy;
-use super::select::{Counters, Match, selection, top_match};
+use super::select::{Counters, Match, reviewed_match, selection, top_match};
 use super::trips::Matrix;
 use crate::batch::Batch;
 
@@ -26,6 +26,8 @@ pub(crate) enum Event {
     /// R052.
     Secondary,
     SecondaryDisagreement,
+    /// R082.
+    Reviewed,
     /// R053: okres and country inferred from the town name.
     FromTownName,
 }
@@ -85,6 +87,16 @@ pub(crate) fn match_stops(
         .collect();
     for matrix in matrices {
         secondary(&mut matched, matrix, batch, evidence, policy);
+    }
+    // R082: what the catalogues and the kilometres left unplaced takes its reviewed row.
+    for state in &mut matched {
+        if state.matched.is_none()
+            && let Some(found) =
+                reviewed_match(evidence, policy, state.stop.locality(), &state.candidates)
+        {
+            state.matched = Some(Arc::new(found));
+            state.events.push(Event::Reviewed);
+        }
     }
     for state in &mut matched {
         if state.matched.is_none() && from_town_name(&mut state.stop, evidence, policy) {

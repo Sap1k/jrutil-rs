@@ -223,6 +223,95 @@ fn jdf_r007_gapfill_catalogue_positions_are_reviewed_corrections() {
     assert_eq!(observations, expected);
 }
 
+/// A catalogue row without an okres and another catalogue's row with one describe one stop: the
+/// stop is located. Two rows that state different okresy stay ambiguous.
+#[test]
+fn jdf_r048_a_row_without_okres_agrees_with_one_that_states_it() {
+    let (both, _) = evidence_with(
+        vec![
+            (
+                "catalogue.csv",
+                vec![row("Exact,stop", 48.8963, 18.0421, None, Some("SK"))],
+            ),
+            (
+                "other.csv",
+                vec![row("Exact,stop", 48.8963, 18.0414, Some("TN"), Some("SK"))],
+            ),
+        ],
+        Vec::new(),
+        Vec::new(),
+    );
+    let fixed = fix(exact_stop_batch("TN", "SK"), &both).0.unwrap();
+    let location = stop_at(&fixed, 1).location.clone().unwrap();
+    assert!(location.origin.is_precise());
+    assert_eq!(&*location.source, "external:catalogue+external:other");
+
+    let evidence = evidence(vec![
+        row("Exact,stop", 48.8963, 18.0421, Some("TN"), Some("SK")),
+        row("Exact,stop", 48.8963, 18.0414, Some("PU"), Some("SK")),
+    ]);
+    let (fixed, diagnostics) = fix(exact_stop_batch("TN", "SK"), &evidence);
+    assert!(
+        !stop_at(&fixed.unwrap(), 1)
+            .location
+            .as_ref()
+            .is_some_and(|l| l.origin.is_precise())
+    );
+    assert!(codes(&diagnostics).contains(&"jdf_match_ambiguous"));
+}
+
+/// Catalogue rows of one name 2 km apart place nothing, and a bare municipality name loses its
+/// match: in both cases the reviewed row places the stop. Where the rows do agree they are
+/// pooled as before (the test of R007).
+#[test]
+fn jdf_r082_an_unmatched_stop_takes_its_reviewed_row() {
+    let (apart, _) = evidence_with(
+        vec![
+            (
+                "gapfill.csv",
+                vec![row("Exact,stop", 50.15, 14.25, Some("AA"), Some("CZ"))],
+            ),
+            (
+                "manual.csv",
+                vec![
+                    row("Exact,stop", 50.1501, 14.2501, Some("AA"), Some("CZ")),
+                    row("Exact,stop", 50.17, 14.25, Some("AA"), Some("CZ")),
+                ],
+            ),
+        ],
+        Vec::new(),
+        Vec::new(),
+    );
+    let (fixed, diagnostics) = fix(exact_stop_batch("AA", "CZ"), &apart);
+    let location = stop_at(&fixed.unwrap(), 1).location.clone().unwrap();
+    assert_eq!(location.origin, Origin::Gapfill);
+    assert_eq!(&*location.source, "external:gapfill");
+    assert!(codes(&diagnostics).contains(&"jdf_match_reviewed"));
+
+    let (village, _) = evidence_with(
+        vec![(
+            "gapfill.csv",
+            vec![row("Adamov", 50.15, 14.75, Some("BB"), Some("CZ"))],
+        )],
+        Vec::new(),
+        Vec::new(),
+    );
+    let stops = vec![
+        stop(1, "Adamov", None, None),
+        stop(2, "Nowhere", Some("at all"), None),
+    ];
+    let (fixed, _) = fix(
+        batch("b", stops, &[(1, vec![at(1, 0), at(2, 5)])]),
+        &village,
+    );
+    assert!(
+        stop_at(&fixed.unwrap(), 1)
+            .location
+            .as_ref()
+            .is_some_and(|l| l.origin.is_precise())
+    );
+}
+
 #[test]
 fn jdf_r048_candidates_far_apart_are_ambiguous() {
     let evidence = evidence(vec![

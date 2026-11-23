@@ -194,13 +194,17 @@ pub const R047: Rule = Rule {
     summary: "catalogue candidates before OSM candidates, never mixed",
 };
 
-/// A group is usable when it shares one okres and country and lies within the radius of its
-/// centroid; otherwise the stop is not matched (diagnosed as ambiguous).
+/// A group is usable when its rows name one country, the okresy they state are one, and it lies
+/// within the radius of its centroid; otherwise the stop is not matched (diagnosed as
+/// ambiguous). A row that states no okres agrees with any: catalogues of foreign stops often
+/// leave it blank, and a row elsewhere that states it must not turn a stop the catalogues agree
+/// on into an unlocated one (F# compared the cells as written, so a gap-fill row with `TN` next
+/// to catalogue rows without an okres cost Trenčín,Hasičská its position).
 ///
-/// Candidates far apart are different places with one name.
+/// Candidates far apart, or in different okresy, are different places with one name.
 pub const R048: Rule = Rule {
     id: "JDF-R048",
-    summary: "a candidate group needs one okres and country and a small radius",
+    summary: "a candidate group needs one country, at most one stated okres and a small radius",
 };
 
 /// A match is the group's centroid (mean in the local tangent plane, verdict Q5); its name,
@@ -458,4 +462,17 @@ pub const R077: Rule = Rule {
 pub const R078: Rule = Rule {
     id: "JDF-R078",
     summary: "estimates are aggregated per stop; unlocated stops are reported",
+};
+
+/// A stop that the catalogues and the kilometre matching leave unmatched takes the position of
+/// its reviewed gap-fill rows, when its country and okres accept them and they form a group.
+///
+/// A gap-fill row is a reviewer's answer for a stop nothing else places. F# only pooled it with
+/// the catalogue rows, so it could not help where those disagree (the rows named Nové Heřminovy
+/// lie 1.4 km apart) or where a rule discards the match (a bare municipality name: Mastník,
+/// Plazy), and such stops were published as estimates. It stays a last resort: where the
+/// catalogues do place a stop, they are not overruled.
+pub const R082: Rule = Rule {
+    id: "JDF-R082",
+    summary: "an otherwise unmatched stop takes its reviewed gap-fill rows",
 };

@@ -66,7 +66,7 @@ name = "drahy"
 archive = "sources/JDF_drahy.zip"
 
 [jdf.posts]
-routing = "<workdir>/osm/jdf-transit-routing-demand.osm.pbf"
+routing = "<workdir>/osm/jdf-transit-routing-base.osm.pbf"   # unclipped: the demand clip is gone
 policy = "<obehy>/src/obehy/data/post-inference/learned-v1.json"
 reports = "rs/posts-reports"               # post_candidates.csv, post_decisions.csv
 cache = "<workdir>/cache/jrutil-rs/routing"
@@ -147,7 +147,7 @@ Only at the switch, in one commit each. The serving contract, the loader, the AP
 | `fix-jdf`, `merge-jdf`, `jdf-to-bundle`, `regional-gtfs-overlay` | one `[jdf]` build |
 | `--ext-geodata` | `catalogues`, `registry`, `route_rules`, the overlay `overrides` |
 | `--cz-pbf` | `osm` |
-| `--routing-osm-pbf`, `--post-inference-policy`, `--routing-cache` | `[jdf.posts] routing`, `policy`, `cache` |
+| `--routing-osm-pbf`, `--post-inference-policy`, `--routing-cache` | `[jdf.posts] routing` (the unclipped base extract; the osmium demand clip goes), `policy`, `cache` |
 | `--capture-post-inference-evidence` | `[jdf.posts] evidence` |
 | `--stop-registry-candidates` (three commands) | `registry_candidates`, `post_candidates.csv` in the posts reports, `overlay_place_candidates.csv` in the overlay reports |
 | `--policy` (overlay) | the source profiles shipped with the compiler (`policy/overlay/*.toml`) |
@@ -174,7 +174,11 @@ Rail (national comparison done 2026-11-22, `docs/golden.md`):
 - trip-to-trip transfers of replacement buses are published in serving;
 - a station that cannot be placed makes the package ineligible instead of publishing it at 0,0.
 
-Road:
+Road (national comparison done 2026-11-22/23, `docs/golden.md`):
+- trips of JDF 1.8/1.9 batches follow their time codes (F# ran them every day of the version);
+- a version interrupted by another is one trip with a gap in its calendar, not `:p2` trips;
+- a trip whose times step back mid-route is dropped with a warning (three nationally);
+- stops the catalogues or a reviewed gap-fill row place are no longer estimated (JDF-R048, R082);
 - a route without a published trip is not published (which also lets IDS JMK own line 444, whose
   authority F# withheld because of such a route);
 - `cis:line_trip` keys are valid for their line version's period;

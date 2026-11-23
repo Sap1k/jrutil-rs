@@ -1,12 +1,13 @@
 # Road package as production builds it: estimated posts, then the regional overlay (PID, IDS
-# JMK). Every expected difference between the F# chain and jrutil-rs on the road golden slice
-# (docs/golden.md), with its reason.
+# JMK). Every expected difference between the F# production build and jrutil-rs, with its reason.
 #
-#   jrutil compare <root>/jdf/out/fs-ref/overlay-posts-reg <root>/jdf/out/rs-full/package --expect parity/jdf-full.toml
+#   jrutil compare <F# release>/jdf <jrutil-rs release>/jdf --expect parity/jdf-full.toml
 #
-# The categories are those of the overlay (parity/jdf-overlay.toml, which explains the pairing
-# of trips by schedule) and of the estimated posts (parity/jdf-posts.toml), with the counts of
-# the two together.
+# Counts are those of the national comparison of 2026-11-22/23 (docs/golden.md, "The national
+# road comparison"): one production run of each compiler on the same sources. The categories
+# are those of the overlay (parity/jdf-overlay.toml, which explains the pairing of trips by
+# schedule) and of the estimated posts (parity/jdf-posts.toml), and at the end those only the
+# national feed shows.
 
 trip_identity = "journey"
 
@@ -37,45 +38,45 @@ name = "note-text-trimmed"
 matches = "assignment.missing"
 reason = "As in the base package."
 key = ' \}$'
-max = 4
+max = 2638
 
 [[category]]
 name = "note-text-trimmed-new"
 matches = "assignment.extra"
 reason = "As in the base package."
 key = '^route\|note\|'
-max = 4
+max = 2583
 
 [[category]]
 name = "route-notes-once"
 matches = "assignment.missing"
 reason = "As in the base package: a note two versions of a line both carry is published once."
 key = '^route\|note\|'
-max = 17
+max = 146
 
 [[category]]
 name = "claim-target-zero"
 matches = "connection_claim.missing"
 reason = "As in the base package."
-max = 11
+max = 133
 
 [[category]]
 name = "claim-target-absent"
 matches = "connection_claim.extra"
 reason = "As in the base package."
-max = 11
+max = 15
 
 [[category]]
 name = "restriction-without-slot"
 matches = "travel_restriction.missing"
 reason = "As in the base package."
-max = 457
+max = 3376
 
 [[category]]
 name = "restriction-with-slot"
 matches = "travel_restriction.extra"
 reason = "As in the base package."
-max = 457
+max = 3314
 
 [[category]]
 name = "agency-url-placeholder"
@@ -83,7 +84,7 @@ matches = "agency.changed.url"
 reason = "As in the base package."
 a = '^jrutil://invalid$'
 b = '^$'
-max = 19
+max = 58
 
 [[category]]
 name = "boarding-point-timezone"
@@ -91,7 +92,7 @@ matches = "location.changed.timezone"
 reason = "As in the base package."
 a = '^Europe/Prague$'
 b = '^$'
-max = 11126
+max = 63593
 
 [[category]]
 name = "wheelchair-boarding-unknown"
@@ -99,21 +100,21 @@ matches = "location.changed.wheelchair_boarding"
 reason = "As in the base package, and the same for the posts a source brings: its 0 (no information) is null."
 a = '^0$'
 b = '^$'
-max = 28623
+max = 109953
 
 [[category]]
 name = "key-period-narrowed-by-calendar"
 matches = "source_key.missing"
 reason = "As in the base package. In the overlay package F# gave every national key the first and last running day of its trip or slice; the key holds for its line version's period on every part of the trip (JDF-R466)."
 key = '^cis:line(_trip)?\|'
-max = 165257
+max = 337886
 
 [[category]]
 name = "key-period-of-version"
 matches = "source_key.extra"
 reason = "The same keys with the version's period."
 key = '^cis:line(_trip)?\|'
-max = 165257
+max = 335914
 
 # --- Positions ---
 
@@ -121,20 +122,20 @@ max = 165257
 name = "position-of-place-latitude"
 matches = "location.changed.latitude"
 reason = "The base package's centroid differences, and boarding points that have no position of their own: they stand at their place, so when a source's coordinates replace the place's (R091) they move with it. F# kept the old coordinates on those rows."
-max = 3655
+max = 5484
 
 [[category]]
 name = "position-of-place-longitude"
 matches = "location.changed.longitude"
 reason = "As for the latitude."
-max = 3279
+max = 5216
 
 [[category]]
 name = "replaced-coordinate-source"
 matches = "location.changed.coordinate_source"
 reason = "A coordinate the overlay replaced says so (verdict Q13, B4): F# left the national source's name on it."
 b = '^overlay$'
-max = 25061
+max = 36000
 
 [[category]]
 name = "corrected-place-exact"
@@ -142,14 +143,14 @@ matches = "location.changed.coordinate_precision"
 reason = "An estimated national stop corrected from a source (R046) is exact, and so are the boarding points standing at it (Q13)."
 a = '^estimated$'
 b = '^exact$'
-max = 31
+max = 55
 
 [[category]]
 name = "corrected-place-name"
 matches = "location.changed.name"
 reason = "The boarding points of a corrected stop show its corrected name; F# kept the estimate's marked name on them."
 a = ' \[\?\]$'
-max = 8
+max = 32
 
 [[category]]
 name = "public-code-trimmed"
@@ -161,15 +162,15 @@ max = 1
 name = "long-name-trimmed"
 matches = "route.changed.long_name"
 reason = "A route long name is trimmed of surrounding spaces."
-max = 8
+max = 9
 
 # --- Conflicts on owned line-dates (verdict Q3, B23) ---
 
 [[category]]
 name = "conflict-keeps-national-trip"
 matches = "trip.changed.service_id"
-reason = "Where two source trips claim one national trip with different facts on a date the source owns the line, F# removed the national trip on that date although it reported the national value as retained. The trip keeps the date (1,398 trips, 3,006 trip-dates, each an overlay_fact_conflict date). Also the trips of line 728444 that lose dates to the authority below."
-max = 1424
+reason = "Where two source trips claim one national trip with different facts on a date the source owns the line, F# removed the national trip on that date although it reported the national value as retained. The trip keeps the date (1,398 trips, 3,006 trip-dates, each an overlay_fact_conflict date). Also the trips of line 728444 that lose dates to the authority below. Nationally also: the trips of JDF 1.8/1.9 batches, whose time codes keep their type (jdf-read B1: 1,405 trips run on 26,782 fewer trip-dates and 279 more), and the trips that hold the dates of F#'s chunk trips (version-chunk-trips)."
+max = 4663
 
 # --- Authority gained on IDS JMK line 444 ---
 
@@ -210,7 +211,7 @@ max = 114
 name = "authority-retired-zones"
 matches = "call_zone.missing"
 reason = "Zones of calls of the national trips the authority above retires."
-max = 54
+max = 42
 
 # --- Route stops follow the trips ---
 
@@ -218,25 +219,25 @@ max = 54
 name = "route-stops-rederived-sequence"
 matches = "route_stop.changed.sequence"
 reason = "Route stops are derived from the published trips. Where the conflict fix or the authority above changes which trips run, a route's stop list changes with them."
-max = 1585
+max = 1520
 
 [[category]]
 name = "route-stops-rederived-extra"
 matches = "route_stop.extra"
 reason = "As above."
-max = 40
+max = 52
 
 [[category]]
 name = "route-stops-rederived-missing"
 matches = "route_stop.missing"
 reason = "As above."
-max = 6
+max = 94
 
 [[category]]
 name = "route-stops-rederived-calls"
 matches = "trip_call.changed.route_stop_id"
 reason = "Calls pointing at the route stops above."
-max = 564
+max = 507
 
 [[category]]
 name = "route-stop-zones-rederived-system"
@@ -248,13 +249,13 @@ max = 25
 name = "route-stop-zones-rederived-extra"
 matches = "route_stop_zone.extra"
 reason = "As above."
-max = 41
+max = 375
 
 [[category]]
 name = "route-stop-zones-rederived-missing"
 matches = "route_stop_zone.missing"
 reason = "As above."
-max = 10
+max = 89
 
 # --- Smaller ---
 
@@ -262,7 +263,7 @@ max = 10
 name = "notes-of-routes-without-trips"
 matches = "service_note.missing"
 reason = "F# copied every national note. The notes of a route the overlay leaves without a published trip are not published."
-max = 54
+max = 254
 
 [[category]]
 name = "route-key-without-route"
@@ -277,21 +278,21 @@ matches = "trip.changed.bikes_allowed"
 reason = "A source's 0 (no information) on a trip it adds is null."
 a = '^0$'
 b = '^$'
-max = 1641
+max = 1432
 
 [[category]]
 name = "route-key-follows-moved-trips"
 matches = "source_key.missing"
 reason = "A source route whose bound trips move to a route in the source's mode (R088): F# pointed the route key at the national trip's old route (B7)."
 key = '^pid:gtfs_route_id\|'
-max = 2
+max = 4
 
 [[category]]
 name = "route-key-on-moved-trips-route"
 matches = "source_key.extra"
 reason = "The same keys, pointing at the route the trips run on."
 key = '^pid:gtfs_route_id\|'
-max = 2
+max = 4
 
 # --- Estimated posts ---
 
@@ -301,18 +302,163 @@ matches = "trip_call.changed.boarding_point_id"
 reason = "The estimator decides from routed evidence, and the router is new (docs/rules/posts.md, verdicts Q1 and Q2): where a decision sits on a threshold it can fall the other way, in both directions. A call boards at another estimated post of its stop, at an estimated post where F# had none, or at none where F# had one. Judged against the regional feeds' real posts the two estimators are level (docs/golden.md)."
 a = ':(est:\d+|unspecified)$'
 b = ':(est:\d+|unspecified)$'
-max = 67705
+max = 166585
 
 [[category]]
 name = "estimated-post-only-in-reference"
 matches = "location.missing"
 reason = "Estimated posts no call boards at here, and the unspecified point of a stop whose calls all got an estimated post here (see estimated-post-differs)."
 key = ':(est:\d+|unspecified)$'
-max = 240
+max = 983
 
 [[category]]
 name = "estimated-post-only-here"
 matches = "location.extra"
 reason = "Estimated posts only this estimator decided on, and the unspecified point of a stop where a call keeps it here (see estimated-post-differs)."
 key = ':(est:\d+|unspecified)$'
-max = 229
+max = 1048
+
+# --- Seen only in the national feed ---
+
+[[category]]
+name = "version-chunk-trips"
+matches = "trip.missing"
+reason = "A timetable version that another version interrupts ran in F# as separate trips, one per uninterrupted period (`:p2`, ...). It is one trip whose calendar has the gap (jdf-merge Q9, Q10); folded together, every such trip runs on the same dates."
+key = ':p[0-9]+[:|]'
+max = 1931
+
+[[category]]
+name = "version-chunk-calls"
+matches = "trip_call.missing"
+reason = "The calls of the chunk trips above."
+key = ':p[0-9]+[:|]'
+max = 30946
+
+[[category]]
+name = "version-chunk-notes"
+matches = "assignment.missing"
+reason = "What was stated for the chunk trips above."
+key = ':p[0-9]+[:|]'
+max = 4544
+
+[[category]]
+name = "trips-not-published"
+matches = "trip.missing"
+reason = "Forty trips of JDF 1.8/1.9 batches that never run once their time codes keep their type (jdf-read B1: F# lost the type when it upgraded such a batch and ran them every day); three trips whose times step back by about an hour mid-route (`jdf_time_backwards`; F# published them with a 24-hour jump); and three trips F# added from PID for line 001630, which now bind to the national trips (see located-stops-bind below)."
+max = 46
+
+[[category]]
+name = "calls-of-trips-not-published"
+matches = "trip_call.missing"
+reason = "The calls of the trips above."
+max = 964
+
+[[category]]
+name = "notes-of-trips-not-published"
+matches = "assignment.missing"
+reason = "What was stated for the trips above, for the stop only they serve, and for the route of line 200569 whose ID changed (route-group-hash)."
+max = 22447
+
+[[category]]
+name = "stops-not-published"
+matches = "location.missing"
+reason = "The stop only never-running trips serve (jdf:stop:4856), and six stop places F# added from PID for the stops in Świeradów-Zdrój that the national feed could not locate; they are the national stops now (R048)."
+max = 7
+
+[[category]]
+name = "located-stops-bind"
+matches = "trip.extra"
+reason = "Two national trips of line 001630 to Świeradów-Zdrój that PID trips now bind to, because their stops are located (R048; F# added the PID trips beside them), and one national trip F# removed on a conflict (overlay Q3, B23)."
+max = 3
+
+[[category]]
+name = "located-stops-bind-calls"
+matches = "trip_call.extra"
+reason = "The calls of the trips above."
+max = 47
+
+[[category]]
+name = "located-stops-bind-call-keys"
+matches = "call_key.extra"
+reason = "The source call keys of the bound trips above."
+max = 56
+
+[[category]]
+name = "located-stops-bind-keys"
+matches = "source_key.extra"
+reason = "The PID trip keys now on the bound national trips."
+key = '^pid:gtfs_trip_id\|'
+max = 7
+
+[[category]]
+name = "located-stops-bind-keys-moved"
+matches = "source_key.missing"
+reason = "The same keys on the trips F# added."
+key = '^pid:gtfs_trip_id\|'
+max = 7
+
+[[category]]
+name = "located-stops-bind-notes"
+matches = "assignment.extra"
+reason = "What is stated for the trips above, and the integrated-system feature of the renamed route of line 200569."
+max = 9
+
+[[category]]
+name = "located-stops-posts-parent"
+matches = "location.changed.parent_location_id"
+reason = "PID posts in Świeradów-Zdrój hang on the national stops, not on places added beside them."
+max = 10
+
+[[category]]
+name = "located-stops-posts-country"
+matches = "location.changed.country_code"
+reason = "The same posts take their stop's country."
+max = 10
+
+[[category]]
+name = "located-stops-posts-district"
+matches = "location.changed.district_name"
+reason = "The same posts take their stop's district."
+max = 10
+
+[[category]]
+name = "located-stops-posts-municipality"
+matches = "location.changed.municipality_name"
+reason = "The same posts take their stop's municipality."
+max = 10
+
+[[category]]
+name = "located-stops-route-colour"
+matches = "route.changed.color"
+reason = "Line 001630 takes PID's colour now that its trips bind."
+max = 1
+
+[[category]]
+name = "located-stops-route-text-colour"
+matches = "route.changed.text_color"
+reason = "As for the colour."
+max = 1
+
+[[category]]
+name = "route-group-hash"
+matches = "route.extra"
+reason = "A line's second group of detour versions is named by eight hex digits of a hash of its presentation; the hash input is not F#'s (jdf-convert R429, IDs that encode internals change once). One route nationally."
+max = 1
+
+[[category]]
+name = "route-group-hash-reference"
+matches = "route.missing"
+reason = "The same route under F#'s hash, and the route F# added from PID for line 001630 (located-stops-bind)."
+max = 2
+
+[[category]]
+name = "route-group-hash-trips"
+matches = "trip.changed.route_id"
+reason = "The trips of the renamed route."
+max = 14
+
+[[category]]
+name = "position-from-catalogue"
+matches = "location.changed.coordinate_source"
+reason = "Stops whose gap-fill row was removed from the geodata because a catalogue has them (2026-11-23) say `catalogue`; stops that were estimated and are now placed by a catalogue or a reviewed gap-fill row (R048, R082) say so. Their boarding points follow."
+max = 196

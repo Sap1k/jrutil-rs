@@ -70,6 +70,7 @@ The bounded batch set holds JDF 1.11 (2,229 batches), 1.10 (256) and 1.8 (2): al
 | Q16, Q17 | Port R050 and R051. Recorded as limitations. |
 | Q18 | Matching runs per batch, as today: a batch is the trip context the rules need. The context-free part (candidate retrieval and exact selection per name, okres and country) is memoised across batches. Stop reconciliation follows. |
 | Q19 | Port R066. |
+| Q20 | Found on the national feed (2026-11-23), both deviations from F#: R048 counts only the okresy a group's rows state, so a row without one agrees with any (a gap-fill row with `TN` next to catalogue rows without an okres left six Slovak stops unlocated, and six Polish ones the same way); and R082 (new): a stop that nothing else places takes its reviewed gap-fill rows, as a last resort after the kilometre matching (Mastník and Plazy, whose bare municipality names lose their match, and Nové Heřminovy, whose catalogue rows lie 1.4 km apart). Letting gap-fill rows overrule the catalogues was tried and withdrawn: it moved eight stops off their registry positions and sent Loket,u dálnice 1.9 km from where three catalogues agree. |
 
 Further:
 
@@ -1636,6 +1637,14 @@ Hard-coded in `CzRegions.townSynonyms` (R054) and `JdfFixups.mhdTownsJoined` (R0
 - **Proposed verdict:** drop (no intermediate JDF files; rule 1).
 
 ---
+
+#### JDF-R082 — Reviewed gap-fill rows as the last resort
+- **What:** not in F#. After R052, a stop still without a match takes the group of its exact
+  candidates from the gap-fill catalogue (R043–R046 and R048 applied to them alone); R050 and
+  R051 do not apply to it. Position and provenance as R049.
+- **Where:** `fix/select.rs::reviewed_match`, `fix/primary.rs`.
+- **Why:** a gap-fill row is a reviewer's answer for a stop nothing else places (verdict Q20).
+- **Diagnostic:** `jdf_match_reviewed` (info).
 
 ## 4. Identity
 

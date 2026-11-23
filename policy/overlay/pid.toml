@@ -22,7 +22,7 @@ context = { enabled = true, minimum_mapped_calls = 1, maximum_unresolved_groups_
 [trips]
 time_resolution_seconds = 60
 exact_pattern_proximity = true
-keep_source_calls = false
+keep_source_calls = true
 tiers = ["full_signature", "pattern_endpoints", "pattern_first", "pattern_nearest", "pattern_edit_nearest"]
 pattern_edit = { enabled = true, maximum_edits = 3, minimum_agreement = 0.9, require_same_endpoints = true }
 

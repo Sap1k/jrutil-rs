@@ -1,6 +1,11 @@
 # Road package with the regional overlay (PID, IDS JMK): every expected difference between
 # the F# overlay and jrutil-rs on the road golden slice (docs/golden.md), with its reason.
 #
+# The reference was built on 2026-11-22 and describes the compiler as it was then: since the
+# national comparison the overlay keeps source calls as production does, and stop matching has
+# two more rules (JDF-R048, R082), so this ledger no longer passes against a new build. The
+# production shape is judged by parity/jdf-full.toml on the national feed.
+#
 #   jrutil compare <root>/jdf/out/fs-ref/overlay-reg <root>/jdf/out/rs-overlay/package --expect parity/jdf-overlay.toml
 #
 # Slices of a national trip and trips a source adds are named after their dates here and after

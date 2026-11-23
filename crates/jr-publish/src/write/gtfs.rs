@@ -117,9 +117,11 @@ impl Archive {
         rows: impl Iterator<Item = usize>,
         cells: &[Cell],
     ) -> Result<(), PublishError> {
+        // The archive is downloaded by every server and, as the filtered feed, by the public:
+        // the default level halves it against the fastest one for a few seconds of a build.
         let options = zip::write::SimpleFileOptions::default()
             .compression_method(zip::CompressionMethod::Deflated)
-            .compression_level(Some(1))
+            .compression_level(Some(6))
             .last_modified_time(zip::DateTime::default())
             .system(zip::System::Unix)
             .unix_permissions(0o644);

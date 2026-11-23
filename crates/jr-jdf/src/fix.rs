@@ -48,7 +48,7 @@ pub const RULES: &[Rule] = &[
     R006, R007, R008, R009, R010, R011, R012, R013, R015, R016, R033, R034, R035, R036, R037, R038,
     R043, R044, R045, R046, R047, R048, R049, R050, R051, R052, R053, R055, R056, R057, R058, R059,
     R060, R061, R062, R063, R064, R065, R066, R067, R068, R069, R070, R071, R072, R073, R074, R075,
-    R076, R077, R078,
+    R076, R077, R078, R082,
 ];
 
 /// Reports into one batch's diagnostics.
@@ -292,6 +292,11 @@ pub fn fix(
                     "jdf_match_secondary",
                     R052,
                     "matched by kilometre distance along the trips",
+                ),
+                Event::Reviewed => (
+                    "jdf_match_reviewed",
+                    R082,
+                    "placed by its reviewed gap-fill row",
                 ),
                 Event::SecondaryDisagreement => (
                     "jdf_match_secondary_disagreement",

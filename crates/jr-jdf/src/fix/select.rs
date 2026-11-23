@@ -135,14 +135,29 @@ pub(crate) fn exact_matches(
         .collect()
 }
 
-/// R048: the group when it is non-empty, shares one okres and country, and is tight enough.
+/// R048: the group when it is non-empty, names one country and at most one okres, and is tight
+/// enough.
 fn valid_group(evidence: &Evidence, policy: &Policy, group: Vec<u32>) -> Option<Vec<u32>> {
+    let file = &policy.file;
     let first = &evidence.entries[*group.first()? as usize];
-    if group.iter().any(|&entry| {
+    let mut okres: Option<&str> = None;
+    for &entry in &group {
         let entry = &evidence.entries[entry as usize];
-        entry.okres != first.okres || entry.country != first.country
-    }) {
-        return None;
+        let same_country = match (entry.country.as_deref(), first.country.as_deref()) {
+            (Some(left), Some(right)) => file.same_country(left, right),
+            (None, None) => true,
+            _ => false,
+        };
+        if !same_country {
+            return None;
+        }
+        // A row that states no okres does not contradict one that does.
+        if let Some(stated) = entry.okres.as_deref().map(|code| file.okres_alias(code)) {
+            if okres.is_some_and(|known| known != stated) {
+                return None;
+            }
+            okres = Some(stated);
+        }
     }
     let points: Vec<Coord> = group
         .iter()
@@ -161,6 +176,26 @@ pub(crate) fn select_group(
         .iter()
         .partition(|&&entry| evidence.entries[entry as usize].class.is_checked());
     valid_group(evidence, policy, checked).or_else(|| valid_group(evidence, policy, osm))
+}
+
+/// R082: the reviewed gap-fill rows among a stop's exact candidates, when the stop's country and
+/// okres accept them and they form a group.
+pub(crate) fn reviewed_match(
+    evidence: &Evidence,
+    policy: &Policy,
+    stop: Locality<'_>,
+    candidates: &[Candidate],
+) -> Option<Match> {
+    let exact = candidates
+        .iter()
+        .filter(|c| c.quality.is_exact())
+        .map(|c| c.entry);
+    let mut ignored = Counters::default();
+    let reviewed: Vec<u32> = exact_matches(evidence, policy, stop, exact, &mut ignored)
+        .into_iter()
+        .filter(|&entry| evidence.entries[entry as usize].class == SourceClass::Gapfill)
+        .collect();
+    valid_group(evidence, policy, reviewed).map(|group| make_match(evidence, group))
 }
 
 /// R049: position, first entry, sources.

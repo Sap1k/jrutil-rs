@@ -156,6 +156,49 @@ posts (`tools/golden/posts_accuracy.py`, 1,636,203 labelled calls):
 | F# | 72.59 % | 4.19 % | 3.34 % | 19.88 % |
 | jrutil-rs | 72.43 % | 4.13 % | 3.15 % | 20.30 % |
 
+### The national road comparison (2026-11-22/23)
+
+Made once, with the maintainer: the production build `obehy build --estimated-posts` with F#
+JrUtil `aa2f1db`, then the switched pipeline (one `jrutil build`) on the sources that run
+fetched, with its reference date. 14,145 JDF batches, PID and IDS JMK, no route shapes.
+
+| | F# JrUtil | jrutil-rs |
+|---|---|---|
+| whole `obehy build` | 36 min | 13 min with a cold routing cache, under 4 min warm |
+| road compile alone | 22 min (fix, merge, bundle, overlay) | 10 min cold (500 s of it routing 138,775 contexts), 3 min warm |
+| peak memory | not measured | 8.3 GB |
+| road `gtfs.zip` | 125 MB | 63 MB |
+
+`jrutil compare <F# release>/jdf <jrutil-rs release>/jdf --expect parity/jdf-full.toml` passes.
+Folding F#'s chunk trips, the 260,674 national trips run on 17.4 million trip-dates, and every
+date that differs is one of three kinds:
+
+- **JDF 1.8/1.9 batches** (465 of them; the golden slice has two). F# lost the type of their
+  time codes on upgrade (jdf-read B1), so "does not run on 25 December" was ignored: 1,405
+  trips ran on 26,782 trip-dates they do not run, missed 279 they do, and 40 trips that never
+  run were published.
+- **Conflicts on dates a regional feed owns** (overlay Q3, B23): 1,325 national trips keep
+  2,327 trip-dates F# dropped, and one trip F# removed entirely stays.
+- **Three trips with a broken source time** (a time an hour off mid-route) are dropped with
+  `jdf_time_backwards`; F# published them with a 24-hour jump.
+
+What the comparison changed in the compiler:
+
+- The overlay profiles keep source calls (`keep_source_calls`), as production's policy has
+  since 2026-11-21; the golden references had been built with the older policy. That was the
+  bulk of the first run's differences.
+- Stop matching (jdf-read Q20): rows without an okres no longer contradict rows with one
+  (R048), and a stop nothing else places takes its reviewed gap-fill rows (R082). With five
+  gap-fill rows added the same day, no road stop is published with an estimated position (F#:
+  27). No stop lost its registry number; the one F# stop missing is served only by trips that
+  never run.
+- A stop whose district is written as blanks has no district (three stops published `" "`).
+- `gtfs.zip` is written at the default deflate level.
+
+Routing runs on the unclipped routing extract: the demand clip needed rows only F# wrote. On
+the golden slice the package is identical with and without the clip; the cost is about 1.5 GB
+of memory.
+
 ### Overlay and post estimator references
 
 Both are F# runs on the registry-numbered chain, made once (2026-11-22):
