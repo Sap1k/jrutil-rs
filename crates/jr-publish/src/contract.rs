@@ -258,7 +258,7 @@ mod tests {
     #[test]
     fn embedded_contract_loads_with_every_relation_and_key() {
         let contract = contract();
-        assert_eq!((contract.major, contract.minor), (5, 2));
+        assert_eq!((contract.major, contract.minor), (5, 3));
         assert_eq!(contract.relations.len(), 19);
         assert_eq!(contract.relations[0].name, "agency");
 
@@ -287,6 +287,10 @@ mod tests {
             ["0", "1", "2", "3"]
         );
         assert_eq!(contract.namespaces["cis:line_trip"].entity_kind, "trip");
+        assert_eq!(
+            contract.namespaces["ids-jmk:gtfs_trip_line_course"].entity_kind,
+            "trip"
+        );
     }
 
     #[test]

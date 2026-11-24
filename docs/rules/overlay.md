@@ -349,7 +349,7 @@ publishes from it (serving §2).
 | `service_note` | base notes copied (R111) |
 | `assignment`, `connection_claim`, `travel_restriction` | base rows re-targeted to every output trip cut from their trip, IDs re-derived `jdf:<kind>-projection:<32 hex>` when the trip changed, sequences shifted by repeats (R111) |
 | `call_zone`, `route_stop_zone` | base call zones copied per slice (resequenced); IDS JMK `zone_id` per stop place as place-level zones with system `ids-jmk` (R101, R105) |
-| `source_key` | new: `<sys>:gtfs_trip_id` per source trip and contiguous date run, `ids-jmk:line_course`, `<sys>:gtfs_route_id`, `<sys>:gtfs_stop_id`; national keys re-derived from `cz_*`; other base keys re-targeted (R112–R115) |
+| `source_key` | new: `<sys>:gtfs_trip_id` per source trip and contiguous date run, `ids-jmk:line_course`, `ids-jmk:gtfs_trip_line_course`, `<sys>:gtfs_route_id`, `<sys>:gtfs_stop_id`; national keys re-derived from `cz_*`; other base keys re-targeted (R112–R115, R131) |
 | `call_key` | new: `<sys>:gtfs_trip_id` calls whose source sequence differs from the output sequence; base call keys follow their trips (R116) |
 | `route_stop` | re-derived by the writer (serving) |
 | authority / coverage markers | `cz_trips.coverage_sources` and `source_trip_ids` on added trips and `cz_stops.asw_id, post_id, source_ids` on new stops are written but **not published** (only the diagnostics `projection/czech/` copy has them); there is no published authority marker |
@@ -2110,7 +2110,7 @@ in another window and differently from `jr_model::DateSet::to_bytes` (fixed 48 b
 | combined group | `group:<src>:group:<x>[:<name>]`, `<src>:<parent>` | | F# strings, registry keys |
 | pseudo-line | `source:<src>:<original route_id>` | | F# internal, parsed back |
 | equivalence key | `cis:<line>` or `route:<id>` + `|` + call digest | | internal |
-| key namespaces | `<source ID without -gtfs>:gtfs_trip_id`, `:gtfs_route_id`, `:gtfs_stop_id`, `ids-jmk:line_course` | | published contract |
+| key namespaces | `<source ID without -gtfs>:gtfs_trip_id`, `:gtfs_route_id`, `:gtfs_stop_id`, `ids-jmk:line_course`, `ids-jmk:gtfs_trip_line_course` (R131) | | published contract |
 
 `selectionEncoding` = `|`-joined: output stop IDs `;`-joined; output shape ID or empty; distances
 (invariant decimal text) `;`-joined; arrivals `;`-joined; departures `;`-joined; and, only if there
@@ -2448,3 +2448,19 @@ all of the first four items by construction.
 - **Pinned by**: none on the golden slice yet (counted in the projection report).
 - **Constants**: none.
 - **Diagnostic**: `overlay_schedule_not_monotonic`.
+
+#### OVL-R131 A crosswalked trip ID keys every trip of its line/course
+
+- **What**: each crosswalk row (R019) of a source × the R112 runs of every source trip with the
+  same line and course → `source_key` `<sys>:gtfs_trip_line_course`, identifier the row's GTFS
+  trip ID, public the output trip of the run, validity the run, method `operator_crosswalk`.
+  A trip ID thus resolves, on any date, to the trip its line/course runs that day.
+- **Where**: `crates/jr-overlay/src/projection/keys.rs`.
+- **Why**: IDS JMK's realtime (KORDIS GTFS-RT) names a run by the trip ID of one of its calendar
+  variants, not always the one running that day (Oběhy `docs/sources/ids-jmk.md`, IDSJMK-Q9):
+  on 2026-11-24, 131 of 511 running buses and trolleybuses named a variant of another date. The
+  crosswalk resolves by date in the static build, where `api.txt` is (BASE_PLAN section 6.1),
+  so the realtime lookup stays literal.
+- **Pinned by**: `ovl_r131_a_crosswalked_trip_id_keys_every_trip_of_its_line_and_course`.
+- **Constants**: the namespace suffix `gtfs_trip_line_course` (serving 5.3).
+- **Diagnostic**: none.

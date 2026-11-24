@@ -1,7 +1,7 @@
 //! Source keys and call keys (OVL-R112–R116).
 
 use std::borrow::Cow;
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use jr_model::identity::escape;
 use jr_model::timetable::{BindingMethod, CallKey, Entity, Namespace, SourceKey};
@@ -50,7 +50,17 @@ pub const OVL_R116: Rule = Rule {
     summary: "call keys where the source sequence differs from the published one",
 };
 
-pub const RULES: &[Rule] = &[OVL_R112, OVL_R113, OVL_R114, OVL_R115, OVL_R116];
+/// A source trip ID with a crosswalk row (R019) also resolves to every output trip of its
+/// line/course, on the runs R113 publishes for them (`<namespace>:gtfs_trip_line_course`,
+/// `operator_crosswalk`): IDS JMK's realtime names a run by the trip ID of one of its calendar
+/// variants, not always of the variant running that day, so the trip ID alone may name a trip
+/// that does not run while its line/course names the one that does.
+pub const OVL_R131: Rule = Rule {
+    id: "OVL-R131",
+    summary: "a crosswalked trip ID keys every trip of its line/course",
+};
+
+pub const RULES: &[Rule] = &[OVL_R112, OVL_R113, OVL_R114, OVL_R115, OVL_R116, OVL_R131];
 
 /// Contiguous runs of a date set, as day offsets.
 pub fn runs(dates: DateSet) -> Vec<(usize, usize)> {
@@ -190,6 +200,41 @@ pub fn build(context: &Context<'_, '_>, b: &mut EditBuilder<'_>, summary: &mut S
                 },
                 &mut keys,
             );
+        }
+    }
+    // R131: each crosswalk row's trip ID × the runs of every source trip of its line/course.
+    let mut family: HashMap<(u32, &str, &str), Vec<&Mapping>> = HashMap::new();
+    for row in &rows {
+        let source = &prepared.sources[row.source as usize];
+        if let Some(crosswalk) = source.trips[row.trip as usize].operational {
+            let entry = &source.crosswalk[crosswalk as usize];
+            family
+                .entry((row.source, &*entry.line, &*entry.course))
+                .or_default()
+                .push(row);
+        }
+    }
+    for (source_index, source) in prepared.sources.iter().enumerate() {
+        let ns = &source.profile.key_namespace;
+        for entry in &source.crosswalk {
+            let Some(members) = family.get(&(source_index as u32, &*entry.line, &*entry.course))
+            else {
+                continue;
+            };
+            let trip_id = &source.feed.trips[entry.trip as usize].trip_id;
+            for row in members {
+                push(
+                    SourceKey {
+                        namespace: namespace(ns, "gtfs_trip_line_course"),
+                        identifier: trip_id.clone(),
+                        entity: Entity::Trip(context.outputs[row.output].trip),
+                        valid_from: date(row.from),
+                        valid_to: date(row.to),
+                        binding: BindingMethod::OperatorCrosswalk,
+                    },
+                    &mut keys,
+                );
+            }
         }
     }
     // R114: routes.

@@ -424,6 +424,92 @@ fn ovl_r113_r116_line_course_keys_and_call_keys_where_sequences_differ() {
 }
 
 #[test]
+fn ovl_r131_a_crosswalked_trip_id_keys_every_trip_of_its_line_and_course() {
+    let (base, _, _, _) = line_five();
+    let profile = generic_profile(
+        "[hooks.operational_crosswalk]\nmember = \"api.txt\"\npattern = '^Linka/CVlaku = trip_id: (?<line>[^/]+)/(?<course>.+) = (?<trip>[^=\\s]+)$'\n",
+    );
+    // Two calendar variants of course 10/42 (the first week, the second week) and course 10/43.
+    let calls: Vec<_> = abc("s1", ["10:00", "10:06", "10:10"])
+        .into_iter()
+        .chain(abc("s2", ["10:00", "10:06", "10:10"]))
+        .chain(abc("s3", ["10:00", "10:06", "10:10"]))
+        .collect();
+    let mut feed = trip_feed(
+        &profile,
+        &[("r", "5", 3)],
+        &[("r", "s1", ""), ("r", "s2", ""), ("r", "s3", "")],
+        &calls,
+        "",
+    );
+    let mut second = feed.calendars[0].clone();
+    second.service_id = "w".into();
+    second.start_date = Some(day(7));
+    second.end_date = Some(day(13));
+    let mut third = second.clone();
+    third.service_id = "x".into();
+    third.start_date = Some(day(14));
+    third.end_date = Some(day(20));
+    feed.calendars[0].end_date = Some(day(6));
+    feed.calendars.extend([second, third]);
+    feed.trips[1].service_id = "w".into();
+    feed.trips[2].service_id = "x".into();
+    feed.raw.insert(
+        "api.txt".into(),
+        concat!(
+            "Linka/CVlaku = trip_id: 10/42 = s1\n",
+            "Linka/CVlaku = trip_id: 10/42 = s2\n",
+            "Linka/CVlaku = trip_id: 10/43 = s3\n",
+        )
+        .as_bytes()
+        .to_vec(),
+    );
+    let (t, _, _) = applied(&base.t, vec![(&profile, feed)]);
+    let keys = |namespace: &str, id: &str| {
+        let mut found: Vec<_> = t
+            .keys
+            .iter()
+            .filter(|k| k.namespace.as_str() == namespace && &*k.identifier == id)
+            .map(|k| (k.valid_from, k.valid_to))
+            .collect();
+        found.sort();
+        found
+    };
+    let (first_week, second_week) = ((day(0), day(6)), (day(7), day(13)));
+    assert_eq!(keys("test:gtfs_trip_id", "s1"), [first_week]);
+    // Either variant's ID names both weeks' trips; the other course stays its own.
+    for id in ["s1", "s2"] {
+        assert_eq!(
+            keys("test:gtfs_trip_line_course", id),
+            [first_week, second_week],
+            "{id}"
+        );
+    }
+    assert_eq!(
+        keys("test:gtfs_trip_line_course", "s3"),
+        [(day(14), day(20))]
+    );
+    let entity = |id: &str, from| {
+        t.keys
+            .iter()
+            .find(|k| {
+                k.namespace.as_str() == "test:gtfs_trip_line_course"
+                    && &*k.identifier == id
+                    && k.valid_from == from
+            })
+            .map(|k| k.entity)
+    };
+    assert_eq!(entity("s1", day(7)), entity("s2", day(7)));
+    assert_eq!(
+        entity("s2", day(7)),
+        t.keys
+            .iter()
+            .find(|k| k.namespace.as_str() == "test:gtfs_trip_id" && &*k.identifier == "s2")
+            .map(|k| k.entity)
+    );
+}
+
+#[test]
 fn ovl_r116_call_keys_only_where_the_source_sequence_differs() {
     let (mut base, places, route, first) = line_five();
     let second = base.trip(

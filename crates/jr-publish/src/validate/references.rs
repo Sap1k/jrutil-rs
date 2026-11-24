@@ -292,7 +292,7 @@ mod tests {
     #[test]
     fn namespace_encodings_follow_the_contract_examples() {
         let contract = crate::contract::contract();
-        assert_eq!(contract.namespaces.len(), 14);
+        assert_eq!(contract.namespaces.len(), 15);
         // The contract's own examples are valid.
         for (name, valid) in [
             ("cis:line", "582492"),
