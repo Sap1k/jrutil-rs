@@ -78,8 +78,8 @@ pub(super) struct Resolver<'a> {
     policy: &'a Policy,
     /// Per point, its name evidence (CZPTT-R089).
     names: Vec<Prepared>,
-    /// Per point, its fuzzy group, computed when first needed.
-    fuzzy: Vec<OnceCell<Vec<usize>>>,
+    /// Per point, its fuzzy group with each candidate's score, computed when first needed.
+    fuzzy: Vec<OnceCell<(Vec<usize>, Vec<f64>)>>,
 }
 
 impl<'a> Resolver<'a> {
@@ -144,6 +144,9 @@ impl<'a> Resolver<'a> {
                     attempt.rejected.push((method, candidate));
                 }
             }
+            if method == Method::FuzzyName {
+                plausible = self.best_scored(point, plausible);
+            }
             let (candidate, ranked) = match plausible.len() {
                 0 => continue,
                 1 => (plausible[0], None),
@@ -175,13 +178,38 @@ impl<'a> Resolver<'a> {
             Method::Plc => self.evidence.plc_candidates(row.country, row.code),
             Method::ExactName => indexed(&self.evidence.by_name, name.full()),
             Method::RailwayName => indexed(&self.evidence.by_core, name.core()),
-            Method::FuzzyName => self.fuzzy[point].get_or_init(|| self.fuzzy_group(point)),
+            Method::FuzzyName => &self.fuzzy_scored(point).0,
         }
+    }
+
+    fn fuzzy_scored(&self, point: usize) -> &(Vec<usize>, Vec<f64>) {
+        self.fuzzy[point].get_or_init(|| self.fuzzy_group(point).into_iter().unzip())
+    }
+
+    /// CZPTT-R096 for the fuzzy group: only the plausible candidates with the best similarity
+    /// go on to be ranked (B16 fixed).
+    fn best_scored(&self, point: usize, plausible: Vec<usize>) -> Vec<usize> {
+        let (candidates, scores) = self.fuzzy_scored(point);
+        let score = |candidate: usize| {
+            let at = candidates
+                .iter()
+                .position(|&c| c == candidate)
+                .expect("a fuzzy candidate");
+            scores[at]
+        };
+        let best = plausible
+            .iter()
+            .map(|&candidate| score(candidate))
+            .fold(f64::NEG_INFINITY, f64::max);
+        plausible
+            .into_iter()
+            .filter(|&candidate| score(candidate) == best)
+            .collect()
     }
 
     /// Candidates with a qualifier-compatible name at least the minimum similar, best first
     /// (then by node ID), at most the policy's number.
-    fn fuzzy_group(&self, point: usize) -> Vec<usize> {
+    fn fuzzy_group(&self, point: usize) -> Vec<(usize, f64)> {
         let expected = &self.names[point];
         if expected.full().is_empty() {
             return Vec::new();
@@ -207,7 +235,10 @@ impl<'a> Resolver<'a> {
             right_score.total_cmp(left_score).then(left.cmp(right))
         });
         scored.truncate(self.policy.matching.fuzzy_max_candidates);
-        scored.into_iter().map(|(_, index)| index).collect()
+        scored
+            .into_iter()
+            .map(|(score, index)| (index, score))
+            .collect()
     }
 
     /// CZPTT-R095.

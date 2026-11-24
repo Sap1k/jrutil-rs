@@ -2,6 +2,7 @@
 
 use std::cmp::{Ordering, Reverse};
 
+use jr_geo::plane;
 use jr_model::Coord;
 use jr_model::geo::distance_m;
 
@@ -56,14 +57,6 @@ impl Candidate<'_> {
     }
 }
 
-/// A call with a real position and a time.
-#[derive(Clone, Copy)]
-struct Anchor {
-    position: usize,
-    coord: Coord,
-    time: i32,
-}
-
 /// Per point, its estimate. `real` holds the real positions only, so an estimate never anchors
 /// another (CZPTT-R101).
 pub(super) fn estimates(
@@ -109,16 +102,16 @@ fn occurrence_candidates<'t>(
     };
     let mut found = Vec::new();
     for (passenger_only, two_sided, one_sided) in [(true, 0, 2), (false, 1, 3)] {
-        let anchor = |position: usize| -> Option<Anchor> {
+        let anchor = |position: usize| -> Option<plane::Anchor> {
             let call = calls[position];
             if passenger_only && !call.passenger {
                 return None;
             }
             let coord = call.point.and_then(|point| real[point])?;
-            Some(Anchor {
-                position,
+            Some(plane::Anchor {
+                index: position,
                 coord,
-                time: call.reaches()?,
+                time: f64::from(call.reaches()?),
             })
         };
         let previous = (0..position).rev().find_map(anchor);
@@ -133,40 +126,33 @@ fn occurrence_candidates<'t>(
             key,
             sequence: current.sequence,
         };
-        match (previous, next) {
-            (Some(left), Some(right)) => {
-                // Both anchors but no time between them: nothing for this tier (B24 stands).
-                if right.time > left.time {
-                    let ratio = (f64::from(time - left.time) / f64::from(right.time - left.time))
-                        .clamp(0.0, 1.0);
-                    let coord = Coord::new(
-                        left.coord.lon + (right.coord.lon - left.coord.lon) * ratio,
-                        left.coord.lat + (right.coord.lat - left.coord.lat) * ratio,
-                    );
-                    found.push(candidate(
-                        coord,
-                        EstimateMethod::RouteTime,
-                        two_sided,
-                        right.position - left.position,
-                        distance_m(left.coord, right.coord),
-                    ));
-                }
-            }
-            (Some(anchor), None) | (None, Some(anchor)) => {
-                let span = anchor.position.abs_diff(position);
+        match plane::along_route(previous, next, position, f64::from(time)) {
+            Some(plane::AlongRoute::ByTime { left, right, coord }) => found.push(candidate(
+                coord,
+                EstimateMethod::RouteTime,
+                two_sided,
+                right.index - left.index,
+                distance_m(left.coord, right.coord),
+            )),
+            Some(plane::AlongRoute::Beside {
+                anchor,
+                calls_apart,
+            }) => {
                 let rules = &policy.estimate;
-                let north = rules.route_end_offset_m_per_call * span as f64
-                    / rules.metres_per_degree_latitude;
-                let coord = Coord::new(anchor.coord.lon, anchor.coord.lat + north);
+                let coord = plane::north_of(
+                    anchor.coord,
+                    rules.route_end_offset_m_per_call * calls_apart as f64,
+                    rules.metres_per_degree_latitude,
+                );
                 found.push(candidate(
                     coord,
                     EstimateMethod::RouteEnd,
                     one_sided,
-                    span,
+                    calls_apart,
                     0.0,
                 ));
             }
-            (None, None) => {}
+            None => {}
         }
     }
     found

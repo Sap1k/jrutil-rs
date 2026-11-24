@@ -781,3 +781,94 @@ fn jdf_r073_r078_stops_without_geography_or_position_are_reported() {
     assert!(all.contains("jdf_stop_without_okres"));
     assert!(all.contains("jdf_location_missing"));
 }
+
+#[test]
+fn jdf_r009_a_tram_stop_without_a_tram_tag_is_a_stop() {
+    let node = |id, name: &str, lat, lon, railway: &str| jr_formats::osm::Node {
+        id,
+        coord: Coord::new(lon, lat),
+        tags: vec![
+            ("railway".into(), railway.into()),
+            ("public_transport".into(), "platform".into()),
+            ("name".into(), name.into()),
+        ],
+    };
+    let (evidence, _) = evidence_with(
+        Vec::new(),
+        vec![
+            node(9, "Lhota,Náves", 50.15, 14.15, "tram_stop"),
+            // A railway platform without `tram` is the rail compiler's (B9 fixed only for
+            // `railway=tram_stop`).
+            node(10, "Lhota,nádraží", 50.16, 14.16, "platform"),
+        ],
+        Vec::new(),
+    );
+    let stops = vec![
+        stop(1, "Lhota", Some("Náves"), None),
+        stop(2, "Lhota", Some("nádraží"), None),
+    ];
+    let fixed = fix(
+        batch("b", stops, &[(1, vec![at(1, 0), at(2, 5)])]),
+        &evidence,
+    )
+    .0
+    .unwrap();
+    assert_eq!(
+        &*stop_at(&fixed, 1).location.as_ref().unwrap().source,
+        "osm:node:9"
+    );
+    assert_ne!(
+        stop_at(&fixed, 2).location.as_ref().unwrap().origin,
+        Origin::Osm
+    );
+}
+
+#[test]
+fn jdf_r076_r077_inverted_anchors_place_the_stop_north_of_the_nearer() {
+    let evidence = evidence(vec![
+        row("Stop,a", 50.0, 14.0, None, None),
+        row("Stop,c", 50.001, 14.001, None, None),
+    ]);
+    let stops = vec![
+        stop(1, "Stop", Some("a"), None),
+        stop(2, "Stop", Some("b"), None),
+        stop(3, "Stop", Some("c"), None),
+    ];
+    // The anchors are reached at the same minute: no time to interpolate by (B18).
+    let fixed = fix(
+        batch("b", stops, &[(1, vec![at(1, 10), at(2, 10), at(3, 10)])]),
+        &evidence,
+    )
+    .0
+    .unwrap();
+    let middle = stop_at(&fixed, 2).location.clone().unwrap();
+    assert_eq!(middle.origin, Origin::RouteEnd);
+    assert!((middle.coord.lat - (50.0 + 300.0 / 111_320.0)).abs() < 1e-9);
+    assert!((middle.coord.lon - 14.0).abs() < 1e-12);
+}
+
+#[test]
+fn jdf_r011_a_foreign_osm_stop_has_its_country() {
+    let (evidence, _) = evidence_with(
+        Vec::new(),
+        vec![bus_stop(9, "Waldsassen,Bahnhof", 49.98, 11.5)],
+        Vec::new(),
+    );
+    let stops = vec![
+        located(
+            stop(1, "Waldsassen", Some("Bahnhof"), None),
+            None,
+            Some("D"),
+        ),
+        stop(2, "Lhota", Some("Náves"), None),
+    ];
+    let fixed = fix(
+        batch("b", stops, &[(1, vec![at(1, 0), at(2, 50)])]),
+        &evidence,
+    )
+    .0
+    .unwrap();
+    let waldsassen = stop_at(&fixed, 1);
+    assert_eq!(&*waldsassen.location.as_ref().unwrap().source, "osm:node:9");
+    assert_eq!(waldsassen.country.as_deref(), Some("D"));
+}

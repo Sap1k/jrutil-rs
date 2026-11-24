@@ -32,8 +32,9 @@ pub const R008: Rule = Rule {
     summary: "exact duplicate catalogue rows are collapsed, the first kept",
 };
 
-/// A node is a stop when it has no `train` key, has `tram` if it has `railway`, and carries one
-/// of the stop tags (B9 kept, verdict Q15).
+/// A node is a stop when it has no `train` key, has `tram` if it has `railway` (unless its
+/// `railway` value is itself a stop tag: `tram_stop`; B9 fixed, `docs/roadmap.md`), and
+/// carries one of the stop tags.
 ///
 /// The extract holds every public-transport node; railway stations are the rail compiler's.
 pub const R009: Rule = Rule {
@@ -49,9 +50,10 @@ pub const R010: Rule = Rule {
     summary: "an OSM stop is named by name, else name:cs; official_name is the full name",
 };
 
-/// A node's okres is the okres of the one municipality containing it; its country is the home
-/// country exactly when it has an okres (foreign nodes have none: B8, verdict Q14). In several
-/// municipalities it has neither, with a warning.
+/// A node's okres is the okres of the one municipality containing it, and then its country is
+/// the home country. A node in no municipality takes the one foreign country containing it, in
+/// the feed's code (B8 fixed, `docs/roadmap.md`). In several municipalities it has neither, with
+/// a warning.
 ///
 /// OSM nodes carry no okres, and the okres is part of a JDF stop's identity.
 pub const R011: Rule = Rule {
@@ -438,7 +440,8 @@ pub const R075: Rule = Rule {
 };
 
 /// A timed call's stop without a precise position is interpolated by scheduled time between the
-/// nearest timed calls with one; inverted anchors give nothing (B18 kept).
+/// nearest timed calls with one. Anchors whose times do not increase leave it to R077 with the
+/// nearer anchor (B18 fixed, `docs/roadmap.md`).
 ///
 /// Stops between known stops lie between them.
 pub const R076: Rule = Rule {
@@ -446,8 +449,8 @@ pub const R076: Rule = Rule {
     summary: "unmatched stops are interpolated by scheduled time",
 };
 
-/// With an anchor on one side only, the stop is placed north of it by the offset per call
-/// (CZPTT-R100 formulation).
+/// With an anchor on one side only, or two that give no time to interpolate by, the stop is
+/// placed north of the (nearer) anchor by the offset per call (CZPTT-R100 formulation).
 ///
 /// A visible placeholder rather than no position.
 pub const R077: Rule = Rule {

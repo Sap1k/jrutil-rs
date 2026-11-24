@@ -362,6 +362,7 @@ pub fn jdf(spec: &JdfSpec, options: &RunOptions) -> Result<(), BuildError> {
                 .collect(),
             osm_nodes: sources.osm_nodes,
             okresy: sources.okresy,
+            countries: sources.countries,
             towns: sources.towns,
             foreign_towns: sources.foreign_towns,
             synonyms: synonym_lines.clone(),

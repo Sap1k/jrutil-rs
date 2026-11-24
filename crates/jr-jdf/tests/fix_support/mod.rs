@@ -181,8 +181,8 @@ pub fn rectangle(west: f64, south: f64, east: f64, north: f64) -> Vec<Coord> {
     ]
 }
 
-pub fn okres(code: &str, polygons: Vec<Vec<Coord>>) -> gazetteer::Okres {
-    gazetteer::Okres {
+pub fn okres(code: &str, polygons: Vec<Vec<Coord>>) -> gazetteer::CodedArea {
+    gazetteer::CodedArea {
         code: code.into(),
         name: None,
         polygons: polygons
@@ -234,6 +234,14 @@ pub fn town(name: &str, okres: &str, area: Vec<Coord>, feature: usize) -> gazett
         }],
         feature,
     }
+}
+
+/// Countries by ISO code: the home country around every okres, Germany west of it.
+pub fn countries() -> Vec<gazetteer::Country> {
+    vec![
+        okres("CZ", vec![rectangle(12.0, 48.0, 19.0, 51.0)]),
+        okres("DE", vec![rectangle(11.0, 49.0, 12.0, 50.5)]),
+    ]
 }
 
 pub fn towns() -> Vec<gazetteer::Town> {
@@ -307,6 +315,7 @@ pub fn evidence_with(
             catalogues: rows,
             osm_nodes: nodes,
             okresy: okresy(),
+            countries: countries(),
             towns: towns(),
             foreign_towns,
             synonyms: synonyms::parse(SYNONYMS),

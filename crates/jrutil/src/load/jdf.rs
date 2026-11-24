@@ -25,6 +25,7 @@ use super::LoadError;
 use crate::spec::JdfSpec;
 
 const OKRESY: &str = "cz_regions.json.gz";
+const COUNTRIES: &str = "eur_countries.json.gz";
 const TOWNS: &str = "cz_towns.json.gz";
 const FOREIGN_TOWNS: &str = "eur_towns_countries.csv";
 const REGISTRY_STOPS: &str = "stops.csv";
@@ -85,6 +86,7 @@ pub struct Sources {
     pub catalogues: Vec<(String, Vec<catalogue::Row>)>,
     pub osm_nodes: Vec<Node>,
     pub okresy: Vec<gazetteer::Okres>,
+    pub countries: Vec<gazetteer::Country>,
     pub towns: Vec<gazetteer::Town>,
     pub foreign_towns: Vec<gazetteer::ForeignTown>,
     pub registry: Option<Vec<registry::Stop>>,
@@ -181,6 +183,9 @@ pub fn load(spec: &JdfSpec) -> Result<Sources, LoadError> {
     let path = spec.gazetteer.join(OKRESY);
     let okresy = gazetteer::parse_okresy(&*auxiliary("gazetteer", path.clone())?)
         .map_err(|error| invalid(&path, error))?;
+    let path = spec.gazetteer.join(COUNTRIES);
+    let countries = gazetteer::parse_countries(&*auxiliary("gazetteer", path.clone())?)
+        .map_err(|error| invalid(&path, error))?;
     let path = spec.gazetteer.join(TOWNS);
     let towns = gazetteer::parse_towns(&*auxiliary("gazetteer", path.clone())?)
         .map_err(|error| invalid(&path, error))?;
@@ -217,6 +222,7 @@ pub fn load(spec: &JdfSpec) -> Result<Sources, LoadError> {
         catalogues,
         osm_nodes,
         okresy,
+        countries,
         towns,
         foreign_towns,
         registry,

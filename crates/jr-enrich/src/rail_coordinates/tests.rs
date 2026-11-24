@@ -281,6 +281,58 @@ fn czptt_r091_r092_r094_railway_core_and_fuzzy_matches_independent_of_threads() 
     assert!(outcome.summary.estimated_by_method.is_empty());
 }
 
+/// Two plausible fuzzy candidates: the closer name wins although the other has the better
+/// country hint and lies nearer the neighbours (B16).
+#[test]
+fn czptt_r096_the_fuzzy_score_ranks_plausible_candidates() {
+    let fixture = |with_best: bool| {
+        let mut f = Fixture::new();
+        f.path(
+            "a",
+            &[
+                at("CZ", "57076", "Praha", "08:00", true),
+                at("PL", "55555", "Głuchołas.F-ka Mebli", "08:20", true),
+                at("CZ", "57016", "Kolín", "08:40", true),
+            ],
+        );
+        f.sr70_at("57076", "Praha", 50.083, 14.435);
+        f.sr70_at("57016", "Kolín", 50.026, 15.214);
+        if with_best {
+            f.node(
+                1,
+                50.10,
+                14.60,
+                &[
+                    ("railway", "halt"),
+                    ("name", "Głuchołazy Mebli"),
+                    ("addr:country", "DE"),
+                ],
+            );
+        }
+        f.node(
+            2,
+            50.05,
+            14.82,
+            &[
+                ("railway", "halt"),
+                ("name", "Głuchołazy Fabryka Mebli"),
+                ("addr:country", "PL"),
+            ],
+        );
+        f
+    };
+    let f = fixture(false);
+    let (alone, _) = f.run().position(&f.t, "PL", "55555").unwrap();
+    assert_near(alone, 14.82, 50.05);
+
+    let f = fixture(true);
+    let outcome = f.run();
+    let (position, rule) = outcome.position(&f.t, "PL", "55555").unwrap();
+    assert_eq!(rule, "CZPTT-R094");
+    assert_near(position, 14.60, 50.10);
+    assert!(outcome.diagnostics("czptt_osm_ambiguous_ranked").is_empty());
+}
+
 #[test]
 fn czptt_r093_r100_protected_qualifier_blocks_fuzzy_and_the_place_is_estimated_by_time() {
     let mut f = Fixture::new();

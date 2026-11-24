@@ -21,7 +21,8 @@
 //! [jdf]
 //! batches = "sources/jdf/batches"       # one ZIP per batch; or the national exports below
 //! catalogues = "geodata/other"          # stop catalogues, every *.csv below it
-//! gazetteer = "geodata/gazetteer"       # cz_regions.json.gz, cz_towns.json.gz, eur_towns_countries.csv
+//! gazetteer = "geodata/gazetteer"       # cz_regions.json.gz, eur_countries.json.gz, cz_towns.json.gz,
+//!                                       # eur_towns_countries.csv
 //! osm = "osm/jdf-post-candidates.osm.pbf"
 //! registry = "geodata/registry"         # optional: stops.csv
 //! route_rules = "geodata/routes"        # optional: transport-modes.csv, presentation.csv

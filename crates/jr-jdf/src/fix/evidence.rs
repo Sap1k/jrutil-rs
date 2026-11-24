@@ -26,6 +26,7 @@ pub struct EvidenceInputs<'a> {
     pub catalogues: Vec<(&'a str, Vec<catalogue::Row>)>,
     pub osm_nodes: Vec<Node>,
     pub okresy: Vec<gazetteer::Okres>,
+    pub countries: Vec<gazetteer::Country>,
     pub towns: Vec<gazetteer::Town>,
     pub foreign_towns: Vec<gazetteer::ForeignTown>,
     pub synonyms: Vec<synonyms::Line>,
@@ -130,20 +131,7 @@ impl Evidence {
 
         // R015: one area per okres code, every polygon of it (B2 fixed).
         let okres_codes: Vec<Box<str>> = inputs.okresy.iter().map(|o| o.code.clone()).collect();
-        let okres_polygons: Vec<Vec<Polygon>> = inputs
-            .okresy
-            .iter()
-            .map(|okres| {
-                okres
-                    .polygons
-                    .iter()
-                    .map(|p| Polygon {
-                        exterior: p.exterior.clone(),
-                        holes: p.holes.clone(),
-                    })
-                    .collect()
-            })
-            .collect();
+        let okres_polygons = polygons(&inputs.okresy);
         let okres_areas = Areas::new(&okres_polygons);
         let mut adjacency = BTreeSet::new();
         for area in 0..okres_areas.len() {
@@ -224,6 +212,12 @@ impl Evidence {
             .rule(R016),
         );
 
+        // R011: countries, for OSM nodes outside the home country.
+        let countries = CountryLookup {
+            codes: inputs.countries.iter().map(|c| c.code.clone()).collect(),
+            areas: Areas::new(&polygons(&inputs.countries)),
+        };
+
         let mut entries = catalogue_entries(inputs.catalogues, policy, diagnostics);
         let town_lookup = MunicipalityLookup {
             municipalities: &municipalities,
@@ -233,6 +227,7 @@ impl Evidence {
         entries.extend(osm::entries(
             &inputs.osm_nodes,
             &town_lookup,
+            &countries,
             policy,
             diagnostics,
         ));
@@ -317,6 +312,39 @@ pub(crate) struct MunicipalityLookup<'a> {
     pub municipalities: &'a [Municipality],
     pub areas: &'a Areas,
     pub analyzer: &'a Analyzer,
+}
+
+/// The country polygons, by ISO code (R011).
+pub(crate) struct CountryLookup {
+    codes: Vec<Box<str>>,
+    areas: Areas,
+}
+
+impl CountryLookup {
+    /// The ISO code of the one country containing `point`; none outside every country or on a
+    /// border two polygons share.
+    pub fn country_of(&self, point: Coord) -> Option<&str> {
+        match self.areas.containing(point).as_slice() {
+            [one] => Some(&self.codes[*one]),
+            _ => None,
+        }
+    }
+}
+
+/// R015, R011: each area's WGS84 polygons, as the area index takes them.
+fn polygons(areas: &[gazetteer::CodedArea]) -> Vec<Vec<Polygon>> {
+    areas
+        .iter()
+        .map(|area| {
+            area.polygons
+                .iter()
+                .map(|p| Polygon {
+                    exterior: p.exterior.clone(),
+                    holes: p.holes.clone(),
+                })
+                .collect()
+        })
+        .collect()
 }
 
 /// R008: a row's name, coordinate bits, okres and country.

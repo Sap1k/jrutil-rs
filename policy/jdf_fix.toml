@@ -18,7 +18,8 @@ source_prefix = "external:"
 [osm]
 # R009: a node with one of these keys is not a stop.
 excluded_keys = ["train"]
-# R009: a node with the first key must also have the second (B9 kept: verdict Q15).
+# R009: a node with the first key must also have the second, unless the first key's value is
+# itself one of the `eligible` tags below (`railway=tram_stop`).
 requires = [["railway", "tram"]]
 # R009: a node is a stop when one of these tags has one of the values (case-sensitive).
 eligible = [

@@ -3,7 +3,7 @@
 use jr_formats::osm::Node;
 use jr_model::{Diagnostic, Diagnostics, Severity};
 
-use super::evidence::{Entry, MunicipalityLookup, SourceClass};
+use super::evidence::{CountryLookup, Entry, MunicipalityLookup, SourceClass};
 use super::policy::{Policy, TagValues};
 use super::{R009, R011};
 
@@ -29,10 +29,14 @@ fn has_tag(node: &Node, tags: &[TagValues]) -> bool {
 fn eligible(node: &Node, policy: &Policy) -> bool {
     let osm = &policy.file.osm;
     !osm.excluded_keys.iter().any(|key| has_key(node, key))
-        && osm
-            .requires
-            .iter()
-            .all(|(key, required)| !has_key(node, key) || has_key(node, required))
+        && osm.requires.iter().all(|(key, required)| {
+            !has_key(node, key)
+                || has_key(node, required)
+                || osm
+                    .eligible
+                    .iter()
+                    .any(|t| t.key == *key && has_tag(node, std::slice::from_ref(t)))
+        })
         && has_tag(node, &osm.eligible)
 }
 
@@ -41,6 +45,7 @@ fn eligible(node: &Node, policy: &Policy) -> bool {
 pub(super) fn entries(
     nodes: &[Node],
     towns: &MunicipalityLookup<'_>,
+    countries: &CountryLookup,
     policy: &Policy,
     diagnostics: &mut Diagnostics,
 ) -> Vec<Entry> {
@@ -104,7 +109,15 @@ pub(super) fn entries(
                 }
             }
         };
-        let country = okres.as_ref().map(|_| policy.file.home_country.clone());
+        // R011: the home country with an okres; elsewhere the country containing the node, in
+        // the feed's codes (B8 fixed). A home node outside one municipality keeps neither.
+        let country = match &okres {
+            Some(_) => Some(policy.file.home_country.clone()),
+            None => countries
+                .country_of(node.coord)
+                .filter(|&iso| !policy.file.is_home(iso))
+                .map(|iso| policy.file.jdf_country(iso)),
+        };
         let id: Box<str> = format!("{}{}", osm.source_prefix, node.id).into();
         entries.push(Entry {
             name,

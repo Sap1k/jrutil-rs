@@ -118,7 +118,7 @@ pub const CZPTT_R089: Rule = Rule {
 /// OSM candidates are tried in groups, the first group with a plausible candidate winning: PLC
 /// equal to country and code, exact normalised name, equal railway cores, then fuzzy (best
 /// qualifier-compatible similarity at least the policy minimum; the best by score, then node
-/// ID, up to the policy cap). The fuzzy score only makes that cut.
+/// ID, up to the policy cap). The fuzzy score makes that cut and ranks the plausible (R096).
 ///
 /// The authority order of NATIONAL_CZPTT.md: identity before name, exact before approximate.
 pub const CZPTT_R094: Rule = Rule {
@@ -138,9 +138,10 @@ pub const CZPTT_R095: Rule = Rule {
     summary: "OSM candidate vetoed when no timed occurrence fits 2 km + 150 km/h to placed neighbours",
 };
 
-/// Several plausible candidates in a group: the best by most placed neighbours, then country
-/// hint (same, unknown, different), then smallest total distance to them, then node ID is
-/// accepted and diagnosed (verdict Q11).
+/// Several plausible candidates in a group: in the fuzzy group only those with the best
+/// similarity remain (B16 fixed, `docs/roadmap.md`); the best by most placed neighbours, then
+/// country hint (same, unknown, different), then smallest total distance to them, then node ID
+/// is accepted and diagnosed (verdict Q11).
 ///
 /// Two OSM nodes often tag one station (the building and a stop position); quarantining would
 /// lose the point for nothing.
@@ -182,8 +183,8 @@ pub const CZPTT_R099: Rule = Rule {
 /// For each timed occurrence, anchors are the nearest earlier and later calls of the path with
 /// a real position and a time, once requiring passenger calls and once not. Two anchors with a
 /// later right time interpolate by time (`route_time`); one anchor places the point the policy
-/// offset north per call (`route_end_north`, verdict Q12); two anchors without a later right
-/// time give nothing (B24 stands). Tiers: passenger two-sided, any two-sided, passenger
+/// offset north per call (`route_end_north`, verdict Q12), as do two anchors without a later
+/// right time, from the nearer one (B24 fixed, `docs/roadmap.md`). Tiers: passenger two-sided, any two-sided, passenger
 /// one-sided, any one-sided. The best by tier, call span, anchor distance, most service days,
 /// run key and call sequence wins.
 ///

@@ -1,10 +1,11 @@
-//! Gazetteers (`jrutil/data`, `docs/rules/jdf-read.md` 2.8, JDF-R015, R016): okres polygons
-//! (`cz_regions.json.gz`), Czech municipality polygons (`cz_towns.json.gz`) and European town
+//! Gazetteers (`jrunify-ext-geodata/gazetteer`, `docs/rules/jdf-read.md` 2.8, JDF-R011,
+//! R015, R016): okres polygons (`cz_regions.json.gz`), country polygons
+//! (`eur_countries.json.gz`), Czech municipality polygons (`cz_towns.json.gz`) and European town
 //! names (`eur_towns_countries.csv`).
 //!
 //! The two GeoJSON files are read as a stream (gzip, then JSON) straight into the returned
 //! types. They are stored in different coordinate systems, and the reader returns each in its
-//! own: okres polygons are WGS84 (`CRS84`, longitude/latitude) and come as [`Coord`]; municipality
+//! own: okres and country polygons are WGS84 (`CRS84`, longitude/latitude) and come as [`Coord`]; municipality
 //! polygons are ETRS89-LAEA (`EPSG:3035`, metres) and come as [`Laea`]. Projecting between them
 //! is not a reader's business. A file declaring another coordinate system is an error.
 
@@ -61,10 +62,11 @@ pub struct Polygon<P = Coord> {
     pub holes: Vec<Vec<P>>,
 }
 
-/// One okres: every polygon of every feature with its code, in file order (bug B2: a code may
-/// occur on more than one feature; `LT` does).
+/// An area named by a code (an okres, a country): every polygon of every feature with its code,
+/// in file order (bug B2: a code may occur on more than one feature; okres `LT` does, and most
+/// countries with islands or exclaves).
 #[derive(Clone, Debug, PartialEq)]
-pub struct Okres {
+pub struct CodedArea {
     /// The `code` property.
     pub code: Box<str>,
     /// The `name` property of the code's first feature, as written (mis-encoded in the real
@@ -72,6 +74,12 @@ pub struct Okres {
     pub name: Option<Box<str>>,
     pub polygons: Vec<Polygon>,
 }
+
+/// An okres of `cz_regions.json.gz`; its code is the JDF okres code.
+pub type Okres = CodedArea;
+
+/// A country of `eur_countries.json.gz`; its code is ISO 3166-1 alpha-2.
+pub type Country = CodedArea;
 
 /// One municipality feature. Names repeat (`Nová Ves` 14 times); each feature is its own town.
 #[derive(Clone, Debug, PartialEq)]
@@ -136,6 +144,17 @@ impl From<serde_json::Error> for GazetteerError {
 
 /// Parses `cz_regions.json.gz`: one [`Okres`] per distinct code, in order of first occurrence.
 pub fn parse_okresy<R: Read>(gzip_json: R) -> Result<Vec<Okres>, GazetteerError> {
+    parse_coded_areas(gzip_json)
+}
+
+/// Parses `eur_countries.json.gz`: one [`Country`] per distinct code, in order of first
+/// occurrence.
+pub fn parse_countries<R: Read>(gzip_json: R) -> Result<Vec<Country>, GazetteerError> {
+    parse_coded_areas(gzip_json)
+}
+
+/// A WGS84 collection of features with `code` and `name` properties, grouped by code.
+fn parse_coded_areas<R: Read>(gzip_json: R) -> Result<Vec<CodedArea>, GazetteerError> {
     #[derive(Deserialize)]
     struct Properties {
         code: Option<String>,
@@ -143,7 +162,7 @@ pub fn parse_okresy<R: Read>(gzip_json: R) -> Result<Vec<Okres>, GazetteerError>
     }
     let collection = read_collection::<Properties, Coord, R>(gzip_json)?;
     check_crs(collection.crs, &CRS84, true, "CRS84 (WGS84)")?;
-    let mut okresy: Vec<Okres> = Vec::new();
+    let mut areas: Vec<CodedArea> = Vec::new();
     let mut by_code: HashMap<String, usize> = HashMap::new();
     for (
         feature,
@@ -162,16 +181,16 @@ pub fn parse_okresy<R: Read>(gzip_json: R) -> Result<Vec<Okres>, GazetteerError>
             property: "code",
         })?;
         let index = *by_code.entry(code).or_insert_with_key(|code| {
-            okresy.push(Okres {
+            areas.push(CodedArea {
                 code: code.as_str().into(),
                 name: name.map(Box::from),
                 polygons: Vec::new(),
             });
-            okresy.len() - 1
+            areas.len() - 1
         });
-        okresy[index].polygons.extend(polygons);
+        areas[index].polygons.extend(polygons);
     }
-    Ok(okresy)
+    Ok(areas)
 }
 
 /// Parses `cz_towns.json.gz`: one [`Town`] per feature, in file order.

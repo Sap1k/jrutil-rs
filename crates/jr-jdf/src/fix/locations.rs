@@ -23,44 +23,36 @@ pub(crate) fn estimates(
     let estimate = &policy.file.estimate;
     let mut found: BTreeMap<u64, Vec<(Coord, Origin)>> = BTreeMap::new();
     for calls in trips {
-        let anchor = |index: usize| -> Option<(Coord, f64)> {
+        let anchor = |index: usize| -> Option<plane::Anchor> {
             let (stop, time) = calls[index];
-            Some((*precise.get(&stop)?, time?))
+            Some(plane::Anchor {
+                index,
+                coord: *precise.get(&stop)?,
+                time: time?,
+            })
         };
         for (index, &(stop, time)) in calls.iter().enumerate() {
             let Some(time) = time else { continue };
             if precise.contains_key(&stop) {
                 continue;
             }
-            let before = (0..index).rev().find(|&i| anchor(i).is_some());
-            let after = (index + 1..calls.len()).find(|&i| anchor(i).is_some());
-            let north = |anchor_index: usize, calls_apart: usize| {
-                let (coord, _) = anchor(anchor_index).expect("an anchor");
-                plane::north_of(
-                    coord,
-                    estimate.route_end_offset_m_per_call * calls_apart as f64,
-                    estimate.metres_per_degree_latitude,
-                )
-            };
-            let value = match (before, after) {
-                (Some(left), Some(right)) => {
-                    let ((left_coord, left_time), (right_coord, right_time)) = (
-                        anchor(left).expect("anchor"),
-                        anchor(right).expect("anchor"),
-                    );
-                    // R076: inverted anchors give nothing (B18 kept).
-                    (right_time > left_time).then(|| {
-                        let ratio = ((time - left_time) / (right_time - left_time)).clamp(0.0, 1.0);
-                        (
-                            plane::interpolate(left_coord, right_coord, ratio),
-                            Origin::RouteTime,
-                        )
-                    })
-                }
-                (None, Some(right)) => Some((north(right, right - index), Origin::RouteEnd)),
-                (Some(left), None) => Some((north(left, index - left), Origin::RouteEnd)),
-                (None, None) => None,
-            };
+            let before = (0..index).rev().find_map(anchor);
+            let after = (index + 1..calls.len()).find_map(anchor);
+            // R076, R077.
+            let value = plane::along_route(before, after, index, time).map(|along| match along {
+                plane::AlongRoute::ByTime { coord, .. } => (coord, Origin::RouteTime),
+                plane::AlongRoute::Beside {
+                    anchor,
+                    calls_apart,
+                } => (
+                    plane::north_of(
+                        anchor.coord,
+                        estimate.route_end_offset_m_per_call * calls_apart as f64,
+                        estimate.metres_per_degree_latitude,
+                    ),
+                    Origin::RouteEnd,
+                ),
+            });
             if let Some(value) = value {
                 found.entry(stop).or_default().push(value);
             }

@@ -32,7 +32,7 @@ where a phase says so.
 | Inventory | Items | Decision |
 |---|---|---|
 | czptt, jdf-read | B24, B18 | When both anchors exist but are inverted, the estimate falls back to one side. The interpolation helper is shared. |
-| czptt | B16, B30 | The fuzzy score ranks the plausible candidates, and OSM selection no longer depends on resolution order. |
+| czptt | B16 | Among plausible fuzzy candidates, only those with the best similarity are ranked. |
 | jdf-read | B8, Q14 | Foreign OSM stops get their country. |
 | jdf-read | B9, Q15 | `railway=tram_stop` without `tram=*` is kept. |
 | jdf-read | B17, Q13 | The geodata validator rejects placeholder coordinates (jrunify-ext-geodata). |
@@ -50,6 +50,11 @@ These are not changed, and no change is planned:
 
 - czptt B28 (first-wins attributes), B29 (changes at the terminal call), B4 and B9 (moot in
   production);
+- czptt B30 (order-dependent OSM selection). R098's re-evaluation passes already revisit a pick
+  made before its neighbours were known. An order-free scheme (authority rounds) was tried in
+  phase 1 and rejected: it locks in a wrong PLC tag that weaker evidence supported by SR70 should
+  overrule. What remains is two picks the timetable's times cannot both allow, where neither is
+  wrong;
 - jdf-merge B6, B7, B11, B12 (the last is a registry-tooling matter), and Q5 beyond B3;
 - jdf-read B14, B22;
 - the latent jdf-convert items B12, B17, B18, B19, B28;
@@ -59,8 +64,11 @@ These are not changed, and no change is planned:
 
 One phase at a time; each phase lands as one or two coarse commits.
 
-1. **Small correctness fixes.** Inverted anchors; czptt B16 and B30; foreign OSM country; tram
-   stops; the placeholder validator; overlay B6; posts B8 and B11.
+1. **Small correctness fixes.** Inverted anchors (czptt B24, jdf-read B18); czptt B16; foreign
+   OSM country (jdf-read B8, with `eur_countries.json.gz` in the gazetteer); tram stops
+   (jdf-read B9); the placeholder validator (jdf-read B17). Overlay B6 moved to phase 4, where
+   zones get their tariff scope, and posts B8 and B11 to phase 6, where they can be judged by
+   labelled accuracy with the recapture.
 2. **Stops.** jdf-merge B2 and B3, the consistent name structure without `,,`, and the registry
    migration, all together because each of them moves stop identities. The check: registry IDs
    against the last release, with no located stop moving more than 75 m.
@@ -70,9 +78,9 @@ One phase at a time; each phase lands as one or two coarse commits.
    change. One national comparison with the user, because the request-stop change touches about
    a million calls.
 4. **Overlay, step two.** One-to-one assignment, per-source thresholds, zones scoped to their
-   tariff. Judged by the drop in `overlay_fact_conflict` events on the golden slice.
+   tariff (overlay B6). Judged by the drop in `overlay_fact_conflict` events on the golden slice.
 5. **Rail.** CZIPTS calendars, the catalogue version per date, the direction of each train.
-6. **Posts.** The graph fixes, a recapture, the training table from Rust, the reviewed list, the
+6. **Posts.** Lifecycle classes (B8), authored positions (B11), the graph fixes, a recapture, the training table from Rust, the reviewed list, the
    retrained scorer, and the contract minor for estimated and area posts. The bar is labelled
    accuracy no worse than now. One national comparison with the user.
 7. *Optional, not scheduled:* M5 (reading the raw OSM snapshot) and M6 (SŽ přípoje XLSX, OSM
