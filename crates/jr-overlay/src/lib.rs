@@ -26,6 +26,7 @@ pub mod prepare;
 pub mod profile;
 pub mod projection;
 pub mod report;
+pub mod train_keys;
 
 use jr_formats::geodata::registry::OverlayPlace;
 use jr_formats::geodata::{stop_overrides, synonyms};
@@ -82,6 +83,7 @@ pub fn rules() -> impl Iterator<Item = jr_model::Rule> {
         .into_iter()
         .chain(matching::RULES.iter().copied())
         .chain(projection::RULES.iter().copied())
+        .chain([train_keys::RULES])
         .flatten()
         .copied()
 }

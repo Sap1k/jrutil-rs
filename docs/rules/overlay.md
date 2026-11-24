@@ -2464,3 +2464,23 @@ all of the first four items by construction.
 - **Pinned by**: `ovl_r131_a_crosswalked_trip_id_keys_every_trip_of_its_line_and_course`.
 - **Constants**: the namespace suffix `gtfs_trip_line_course` (serving 5.3).
 - **Diagnostic**: none.
+
+#### OVL-R132 A source's crosswalked train trip IDs key the national trains of their course
+
+- **What**: in the rail package, each crosswalk row (R019) of a source whose trip is on a rail
+  route and whose course is all digits (a train number) × each national trip keyed
+  `czptt:train_number` = the course → `source_key` `<sys>:gtfs_trip_line_course`, identifier
+  the row's GTFS trip ID, public that national trip, validity each contiguous run of the dates
+  both the national trip runs under that number and any source trip of the row's line/course
+  runs, method `operator_crosswalk`. Rows of other courses or without a national train are
+  counted in the package summary's `train_keys` section, not diagnosed.
+- **Where**: `crates/jr-overlay/src/train_keys.rs`, run by `jrutil build` for each
+  `[[czptt.train_keys]]` source after the replacement-bus connections.
+- **Why**: heavy rail never enters an overlay (R013), so a regional feed's train trips have no
+  output trip, yet IDS JMK's realtime names its trains by those trip IDs (Oběhy
+  `docs/sources/ids-jmk.md`, IDSJMK-Q1; 158 of 674 running trips on 2026-11-24). `api.txt`
+  gives each train's number as its course, so the static build resolves the trip ID to the
+  train of the day, as R131 does for buses, and the realtime lookup stays literal.
+- **Pinned by**: `ovl_r132_train_trip_ids_key_the_national_trains_of_their_course`.
+- **Constants**: the namespace suffix `gtfs_trip_line_course` (serving 5.3).
+- **Diagnostic**: none.

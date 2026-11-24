@@ -26,6 +26,10 @@ output = "rs/czptt"
 companion = "<route-shapes companion>"
 graph = "<workdir>/cache/route-shapes/graph"
 cache = "<workdir>/cache/route-shapes/results"
+
+[[czptt.train_keys]]                       # IDS JMK train trip IDs as keys (OVL-R132)
+profile = "ids-jmk"
+feed = "<run>/sources/regional/ids-jmk-gtfs.zip"
 ```
 
 ```powershell

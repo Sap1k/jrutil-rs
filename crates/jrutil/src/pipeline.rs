@@ -19,7 +19,9 @@ use rayon::prelude::*;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
-use crate::spec::{CzpttSpec, FilteredSpec, JdfSpec, OverlaySpec, PostsSpec, ShapesSpec};
+use crate::spec::{
+    CzpttSpec, FilteredSpec, JdfSpec, OverlaySpec, PostsSpec, ShapesSpec, TrainKeysSpec,
+};
 use crate::{companion, load};
 
 /// The stop-name synonym table, shared by every road name matcher.
@@ -239,6 +241,18 @@ pub fn czptt(spec: &CzpttSpec, options: &RunOptions) -> Result<(), BuildError> {
     pass(&mut timetable, edits, &precedence, &mut diagnostics)?;
     stages.done("replacement-bus connections");
 
+    let mut train_key_sources = Vec::new();
+    let mut train_key_summaries = serde_json::Map::new();
+    for source in &spec.train_keys {
+        let (source_id, digest, summary) =
+            train_keys(&mut timetable, source, &precedence, &mut diagnostics)?;
+        train_key_summaries.insert(source_id.clone(), section(&summary));
+        train_key_sources.push((source_id, digest));
+    }
+    if !spec.train_keys.is_empty() {
+        stages.done("regional train keys");
+    }
+
     let (edits, route_stop_order) = route_stops::route_stops(&timetable);
     pass(&mut timetable, edits, &precedence, &mut diagnostics)?;
     stages.done("route stops");
@@ -260,17 +274,24 @@ pub fn czptt(spec: &CzpttSpec, options: &RunOptions) -> Result<(), BuildError> {
 
     let publish: PublishPolicy = policy("publish.toml");
     let snapshot_digest = digest_of_lines(&sources.inputs);
+    let mut build_inputs: Vec<(&str, &str)> = vec![("national-czptt", &snapshot_digest)];
+    let mut source_entries = vec![SourceEntry {
+        source_id: "national-czptt".to_owned(),
+        payload_sha256: snapshot_digest.clone(),
+        payload_kind: Some("snapshot".to_owned()),
+    }];
+    for (source_id, digest) in &train_key_sources {
+        build_inputs.push((source_id, digest));
+        source_entries.push(SourceEntry {
+            source_id: source_id.clone(),
+            payload_sha256: digest.clone(),
+            payload_kind: Some("zip".to_owned()),
+        });
+    }
     let options = PublishOptions {
         compiler_version: compiler_version().to_owned(),
-        build_spec_sha256: build_spec_sha256(
-            CZPTT_POLICIES,
-            &[("national-czptt", &snapshot_digest)],
-        ),
-        sources: vec![SourceEntry {
-            source_id: "national-czptt".to_owned(),
-            payload_sha256: snapshot_digest,
-            payload_kind: Some("snapshot".to_owned()),
-        }],
+        build_spec_sha256: build_spec_sha256(CZPTT_POLICIES, &build_inputs),
+        sources: source_entries,
         feed_info: FeedInfo {
             publisher_name: publish.publisher_name,
             publisher_url: publish.publisher_url,
@@ -284,6 +305,12 @@ pub fn czptt(spec: &CzpttSpec, options: &RunOptions) -> Result<(), BuildError> {
             Some(("coordinates".to_owned(), section(&coordinates))),
             Some(("route_stop_order".to_owned(), section(&route_stop_order))),
             route_shapes.map(|summary| ("route_shapes".to_owned(), section(&summary))),
+            (!train_key_summaries.is_empty()).then(|| {
+                (
+                    "train_keys".to_owned(),
+                    serde_json::Value::Object(train_key_summaries),
+                )
+            }),
         ]
         .into_iter()
         .flatten()
@@ -795,6 +822,23 @@ fn write_reports(directory: &Path, reports: &[jr_model::ReportTable]) -> Result<
 /// Regional feeds overlaid on the road timetable: each source is read with what its profile
 /// asks for, the engine returns edits and review reports. Returns each source's ID and the
 /// SHA-256 of its feed, in source order, and the summary for diagnostics.json.
+/// OVL-R132 for one regional feed: its source ID, the feed's digest and what the pass found.
+fn train_keys(
+    timetable: &mut Timetable,
+    spec: &TrainKeysSpec,
+    precedence: &Precedence,
+    diagnostics: &mut Diagnostics,
+) -> Result<(String, String, jr_overlay::train_keys::Summary), BuildError> {
+    let profile = jr_overlay::profile::SourceProfile::builtin(&spec.profile)
+        .ok_or_else(|| BuildError::UnknownProfile(spec.profile.clone()))?
+        .map_err(jr_overlay::OverlayError::from)?;
+    let (feed, digest) = load::gtfs::feed(&spec.feed, &profile.reader())?;
+    let (edits, summary) =
+        jr_overlay::train_keys::train_keys(timetable, &profile, &feed, diagnostics);
+    pass(timetable, edits, precedence, diagnostics)?;
+    Ok((profile.source_id.to_string(), digest, summary))
+}
+
 fn regional_overlay(
     timetable: &mut Timetable,
     spec: &OverlaySpec,

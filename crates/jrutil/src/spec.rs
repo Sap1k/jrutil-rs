@@ -14,6 +14,10 @@
 //! graph = "cache/osr-graph"
 //! cache = "cache/route-shapes"          # optional
 //!
+//! [[czptt.train_keys]]                  # optional: a regional feed's train trip IDs as keys
+//! profile = "ids-jmk"                   # a source profile shipped with the compiler
+//! feed = "sources/ids-jmk/gtfs.zip"
+//!
 //! [jdf]
 //! batches = "sources/jdf/batches"       # one ZIP per batch; or the national exports below
 //! catalogues = "geodata/other"          # stop catalogues, every *.csv below it
@@ -178,6 +182,19 @@ pub struct CzpttSpec {
     pub timetable_year: Option<i16>,
     /// Route shapes from the map-matching companion; none are generated without it.
     pub shapes: Option<ShapesSpec>,
+    /// Regional feeds whose train trip IDs key the national trains (OVL-R132).
+    #[serde(default)]
+    pub train_keys: Vec<TrainKeysSpec>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TrainKeysSpec {
+    /// The name of a source profile shipped with the compiler; it gives the key namespace and
+    /// the crosswalk.
+    pub profile: String,
+    /// The source's GTFS feed, a ZIP.
+    pub feed: PathBuf,
 }
 
 #[derive(Debug, Deserialize)]
@@ -237,6 +254,9 @@ impl BuildSpec {
             }
             if let Some(shapes) = &mut czptt.shapes {
                 shapes.resolve(base);
+            }
+            for source in &mut czptt.train_keys {
+                source.feed = base.join(&source.feed);
             }
         }
         if let Some(jdf) = &mut spec.jdf {
