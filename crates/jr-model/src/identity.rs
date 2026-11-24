@@ -344,6 +344,17 @@ pub mod jdf {
         owner.child(&["notice", kind, &number.to_string()])
     }
 
+    /// A line's route as another operator runs it (`Altdop`): the route under that operator,
+    /// named after the route and the operator's registration number and distinction.
+    pub fn operator_route(route: &PublicId, registration: &str, distinction: u32) -> PublicId {
+        route.child(&["operator", registration, &distinction.to_string()])
+    }
+
+    /// The days of a trip another operator runs (`Altdop`), split from the trip.
+    pub fn operator_trip(trip: &PublicId, registration: &str, distinction: u32) -> PublicId {
+        trip.child(&["operator", registration, &distinction.to_string()])
+    }
+
     /// A further note under the number of `note`: versions of a line published as one route
     /// number their notes independently, so one number can carry several texts. `variant`
     /// counts them from 2, in the order the versions are taken.

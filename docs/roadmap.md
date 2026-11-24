@@ -16,10 +16,10 @@ where a phase says so.
 
 | Inventory | Items | Decision |
 |---|---|---|
-| jdf-convert | B1, B2, B23, Q3 | Confirm the JDF meaning of a route-stop `x` and of a trip's `T`/`!` against the specification first. Then they make the calls request stops. Precedence is most specific first: call, then route stop, then stop. |
+| jdf-convert | B1, B2, B23, Q3 | Done in phase 3 (JDF-R444). JDF 1.11 says a `Zaslinky` code "is the default for all trips of the line", so a route-stop `x` makes every call there a request stop. A trip's `T` (must be ordered) and `!` (runs on condition; the user chose to board it like `T`) give phone-agency boarding to every call, or only to the calls marked with the same code when there are any. Arrangement beats request; `(` and `)` exclude each other with the most specific level (call, route stop, stop) deciding; `$` holds from any level. |
 | jdf-read | B4, B5 | One name normalisation for MHD and non-MHD batches, and a passenger-facing name joins only the stated parts, so it never contains `,,` (JDF-R036, R037, R415). Revised in phase 2: the structured fields keep the moved form (a nearby place without a district is published as the district), as the registry holds it. The registry cannot be migrated back: a row such as `Velký Újezd,rozc.Výkleky,,` may be a real district or a moved nearby place, and nothing records which. No consumer reads the two fields apart, and stop identity, the provisional hash and registry matching ignore which column a part is in, so keeping the form moves no stop. |
 | jdf-convert | B4, Q11 | Typed `Caskody` rows are published as calendar designations. |
-| jdf-convert | B21, Q15 | The alternate operator (`Altdop`) is published on the dates it runs the trip. This needs a model field or a new edit kind, so it is raised as an architecture decision in that phase. |
+| jdf-convert | B21, Q15 | Done in phase 3 (JDF-R483, R484), as the user chose: trips are split by operator. Per day the first matching `Altdop` row decides; each other operator's days are a `SplitTrip` copy under that operator's variant of the route. No model or contract change was needed. A trip one operator runs on all its days keeps its ID and only changes route. |
 | jdf-convert | B3, Q12 | `Mistenky` rows for trip `0` become route notes. |
 | jdf-convert | B5, Q4 | The agency's information phone is published, not the office number. |
 | jdf-merge | B2, B3 (B4 follows) | Fix the bugs: a location-less alias no longer bypasses the distance gates, and suffix retrieval works both ways. Batch-name order stays the stated rule; there is no order-free redesign. |
@@ -72,11 +72,12 @@ One phase at a time; each phase lands as one or two coarse commits.
 2. **Stops.** jdf-merge B2 and B3 and the consistent name structure without `,,` (no registry
    migration: see the B4/B5 row). The check: registry IDs against the last release, with no
    located stop moving more than 75 m.
-3. **JDF semantics.** The specification check, then request stops from route stops and trips,
-   `Caskody` designations, `Altdop` per date, route reservation notes and the information phone.
-   A contract minor where needed, landing with Oběhy's matching `static_build.py` and API
-   change. One national comparison with the user, because the request-stop change touches about
-   a million calls.
+3. **JDF semantics.** Done (2026-11-25). Request stops from route stops and trips, typed
+   `Caskody` rows as notes, `Altdop` by splitting trips, route reservation notes and the
+   information phone. No contract change was needed. National road check against phase 2: same
+   260,654 trips and 4,733,082 calls; 1.97 M calls change boarding (route-stop `x`), 233,890
+   notes added (typed `Caskody`), 1,833 trips move to 290 operator routes (no partial split
+   nationally), 232 agencies get their information phone.
 4. **Overlay, step two.** One-to-one assignment, per-source thresholds, zones scoped to their
    tariff (overlay B6). Judged by the drop in `overlay_fact_conflict` events on the golden slice.
 5. **Rail.** CZIPTS calendars, the catalogue version per date, the direction of each train.

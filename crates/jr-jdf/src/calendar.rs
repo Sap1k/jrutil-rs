@@ -219,6 +219,34 @@ fn never_runs(input: &TripCalendarInput<'_>) -> Diagnostic {
     .rule(R267)
 }
 
+/// R261–R264: the days a list of fixed codes gives by its day attributes (`X`, `+`, day
+/// numbers); `None` when it has none. Other codes are not day attributes and are skipped.
+pub(crate) fn day_attribute_days(
+    codes: &[&str],
+    holidays: &Holidays,
+    policy: &Policy,
+) -> Option<DateSet> {
+    let calendar = &policy.calendar;
+    let mut day_attribute = false;
+    let mut days = DateSet::EMPTY;
+    for &code in codes {
+        if code == &*calendar.working_days {
+            day_attribute = true;
+            let working = (0..5).fold(DateSet::EMPTY, |set, day| set | holidays.weekday(day));
+            days = days | (working - holidays.holidays());
+        } else if code == &*calendar.sundays_and_holidays {
+            day_attribute = true;
+            days = days | holidays.weekday(6) | holidays.holidays();
+        } else if batch::is_digits(code) {
+            day_attribute = true;
+            if let Some(day) = batch::day_number(code, policy) {
+                days = days | holidays.weekday(day);
+            }
+        }
+    }
+    day_attribute.then_some(days)
+}
+
 /// R255–R264 over `valid_from ..= valid_to` (open: to the horizon's end).
 fn ladder(
     input: &TripCalendarInput<'_>,
@@ -278,28 +306,7 @@ fn ladder(
         cover[slot(kind)] = cover[slot(kind)] | DateSet::range(horizon, from, to);
     }
 
-    // R261–R264: the days the day attributes give.
-    let calendar = &policy.calendar;
-    let mut day_attribute = false;
-    let mut by_attributes = DateSet::EMPTY;
-    for &code in &input.codes {
-        if code == &*calendar.working_days {
-            day_attribute = true;
-            let working = (0..5).fold(DateSet::EMPTY, |set, day| set | holidays.weekday(day));
-            by_attributes = by_attributes | (working - holidays.holidays());
-        } else if code == &*calendar.sundays_and_holidays {
-            day_attribute = true;
-            by_attributes = by_attributes | holidays.weekday(6) | holidays.holidays();
-        } else if batch::is_digits(code) {
-            day_attribute = true;
-            if let Some(day) = batch::day_number(code, policy) {
-                by_attributes = by_attributes | holidays.weekday(day);
-            }
-        }
-    }
-    if !day_attribute {
-        by_attributes = full;
-    }
+    let by_attributes = day_attribute_days(&input.codes, holidays, policy).unwrap_or(full);
 
     let covered = |kind| cover[slot(kind)];
     let days = if has[slot(NoteKind::RunsOnly)] {

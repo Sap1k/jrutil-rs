@@ -112,6 +112,9 @@ pub struct CodesPolicy {
     pub wheelchair_stop: Box<str>,
     pub ask_driver: Vec<Box<str>>,
     pub phone_agency: Vec<Box<str>>,
+    /// R444: no pickup and no drop-off at any level (`$`).
+    pub both_directions_none: Vec<Box<str>>,
+    /// R444: these and `no_dropoff` exclude each other; the most specific level decides.
     pub no_pickup: Vec<Box<str>>,
     pub no_dropoff: Vec<Box<str>>,
     pub restrictions: BTreeMap<Box<str>, RestrictionGroup>,

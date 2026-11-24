@@ -180,32 +180,63 @@ fn r440_a_repeated_route_stop_keeps_file_order_and_is_diagnosed() {
 }
 
 #[test]
-fn r444_pickup_and_drop_off_come_from_the_stop_and_the_call() {
+fn r444_pickup_and_drop_off_come_from_the_call_route_stop_stop_and_trip() {
     // "Timed calls at border-only stops are kept without boarding or alighting".
-    let mut builder = batch("a")
-        .stop_with(stop("Alfa", None, None), &["x"])
-        .stop_with(stop("Beta", None, None), &["$"])
-        .stop(stop("Gama", None, None))
-        .stop(stop("Delta", None, None));
-    builder = year_route(builder, LICENCE).trip(LICENCE, 1, &["T"]);
-    let opening = builder.code("(");
-    let phone = builder.code("!");
-    let mut batch = builder.build();
-    batch.batch.trip_stops[2].attributes[0] = Some(opening);
-    batch.batch.trip_stops[3].attributes[0] = Some(phone);
-    let (assembled, _) = assemble(vec![batch]);
-    let calls: Vec<(Boarding, Boarding)> = assembled.timetable.trips.rows()[0]
-        .calls
-        .iter()
-        .map(|c| (c.pickup, c.dropoff))
-        .collect();
+    let build = |trip_codes: &[&str], mark_t: bool| {
+        let mut builder = batch("a")
+            .stop_with(stop("Alfa", None, None), &["x"])
+            .stop_with(stop("Beta", None, None), &["$"])
+            .stop(stop("Gama", None, None))
+            .stop(stop("Delta", None, None));
+        builder = year_route(builder, LICENCE).trip(LICENCE, 1, trip_codes);
+        let opening = builder.code("(");
+        let closing = builder.code(")");
+        let request = builder.code("x");
+        let phone = builder.code("T");
+        let mut batch = builder.build();
+        // Gama: `)` on the route stop, `(` on the call: the call decides.
+        batch.batch.route_stops[2].attributes[0] = Some(closing);
+        batch.batch.trip_stops[2].attributes[0] = Some(opening);
+        // Delta: a request stop for every trip of the line (B1).
+        batch.batch.route_stops[3].attributes[0] = Some(request);
+        if mark_t {
+            batch.batch.trip_stops[3].attributes[1] = Some(phone);
+        }
+        let (assembled, _) = assemble(vec![batch]);
+        assembled.timetable.trips.rows()[0]
+            .calls
+            .iter()
+            .map(|c| (c.pickup, c.dropoff))
+            .collect::<Vec<(Boarding, Boarding)>>()
+    };
+    use Boarding::{AskDriver, PhoneAgency, Regular};
+    const NO: Boarding = Boarding::None;
     assert_eq!(
-        calls,
+        build(&[], false),
         [
-            (Boarding::AskDriver, Boarding::AskDriver),
-            (Boarding::None, Boarding::None),
-            (Boarding::None, Boarding::Regular),
-            (Boarding::PhoneAgency, Boarding::PhoneAgency),
+            (AskDriver, AskDriver),
+            (NO, NO),
+            (NO, Regular),
+            (AskDriver, AskDriver)
+        ]
+    );
+    // A trip to be ordered: every call, unless its calls mark the ones meant (B2).
+    assert_eq!(
+        build(&["T"], false),
+        [
+            (PhoneAgency, PhoneAgency),
+            (NO, NO),
+            (NO, PhoneAgency),
+            (PhoneAgency, PhoneAgency)
+        ]
+    );
+    assert_eq!(
+        build(&["T"], true),
+        [
+            (AskDriver, AskDriver),
+            (NO, NO),
+            (NO, Regular),
+            (PhoneAgency, PhoneAgency)
         ]
     );
 }
@@ -299,11 +330,13 @@ fn r416_r417_r425_positions_wheelchair_boarding_and_location_features() {
 fn r426_agencies_carry_website_phone_and_ico() {
     let mut batch = simple(1, &[]);
     batch.batch.agencies[0].website = Some("www.example.cz".into());
-    batch.batch.agencies[0].office_phone = "123 456 789".into();
+    batch.batch.agencies[0].office_phone = "111 111 111".into();
+    batch.batch.agencies[0].info_phone = Some("123 456 789".into());
     let (assembled, _) = assemble(vec![batch]);
     let agency = &assembled.timetable.agencies.rows()[0];
     assert_eq!(agency.id.as_str(), "jdf:agency:12345678:1");
     assert_eq!(agency.url.as_deref(), Some("http://www.example.cz"));
+    // The information phone, not the office (B5).
     assert_eq!(agency.phone.as_deref(), Some("123 456 789"));
     assert_eq!(agency.registration.as_deref(), Some("12345678"));
 }

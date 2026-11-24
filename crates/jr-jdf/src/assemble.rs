@@ -12,6 +12,7 @@
 mod calls;
 mod keys;
 mod lines;
+pub mod operators;
 mod places;
 mod policy;
 mod post_facts;
@@ -82,6 +83,8 @@ pub const RULES: &[Rule] = &[
     R469,
     calls::R473,
     lines::R478,
+    operators::R483,
+    operators::R484,
 ];
 
 /// The feed version is the merged export's: its format version and the build's reference date,
@@ -118,6 +121,8 @@ pub struct Assembled {
     pub lines: Vec<crate::filtered::LineVersion>,
     /// What the boarding-post estimator reads and the timetable does not carry.
     pub post_facts: PostFacts,
+    /// The trips other operators run, split by [`operators::edits`] after the post estimator.
+    pub operators: operators::OperatorSplits,
     pub summary: Summary,
 }
 
@@ -168,7 +173,6 @@ pub fn assemble(
         &lines,
         &routes,
         &published,
-        input.jdf,
         policy,
         &mut timetable,
         &mut local,
@@ -187,6 +191,7 @@ pub fn assemble(
         .map(|line| post_facts::mode_letter(line.mode).into())
         .collect();
     let post_facts = post_facts::build(&merged, &modes, &points, &published);
+    let operators = operators::decide(&merged, &routes, &published, input.jdf, policy, &mut local);
 
     let violations = timetable.check();
     if !violations.is_empty() {
@@ -244,6 +249,7 @@ pub fn assemble(
         timetable,
         lines,
         post_facts,
+        operators,
         summary,
     })
 }

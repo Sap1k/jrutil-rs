@@ -49,11 +49,12 @@ pub const R408: Rule = Rule {
 };
 
 /// An agency: `jdf:agency:<IČO>:<distinction>`, the name verbatim, the website (with `http://`
-/// unless it carries a scheme anywhere, F# parity), the office phone (Q4), the e-mail, the IČO
-/// as the registration number; timezone and language from policy.
+/// unless it carries a scheme anywhere, F# parity), the information phone (`Telefon informace`,
+/// the number for passengers; never the office or dispatch number: B5 fixed, `docs/roadmap.md`),
+/// the e-mail, the IČO as the registration number; timezone and language from policy.
 pub const R426: Rule = Rule {
     id: "JDF-R426",
-    summary: "Agencies carry name, website, office phone, e-mail and the IČO",
+    summary: "Agencies carry name, website, information phone, e-mail and the IČO",
 };
 
 /// The extended GTFS route type of (effective mode, JDF route type): local, regional,
@@ -504,7 +505,7 @@ pub(crate) fn build(
 }
 
 /// R426.
-fn agency_row(agency: &crate::batch::Agency, policy: &Policy) -> Agency {
+pub(super) fn agency_row(agency: &crate::batch::Agency, policy: &Policy) -> Agency {
     let blank = |text: &Option<Box<str>>| text.clone().filter(|t| !t.trim().is_empty());
     let p = &policy.agencies;
     let url = blank(&agency.website).map(|site| {
@@ -520,7 +521,10 @@ fn agency_row(agency: &crate::batch::Agency, policy: &Policy) -> Agency {
         url,
         timezone: p.timezone.clone(),
         language: Some(p.language.clone()),
-        phone: (!agency.office_phone.trim().is_empty()).then(|| agency.office_phone.clone()),
+        phone: agency
+            .info_phone
+            .clone()
+            .filter(|phone| !phone.trim().is_empty()),
         fare_url: None,
         email: blank(&agency.email),
         registration: Some(agency.id.clone()),

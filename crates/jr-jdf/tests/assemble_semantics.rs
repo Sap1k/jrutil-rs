@@ -119,7 +119,7 @@ fn r452_versions_of_one_route_share_an_equal_note_and_keep_a_differing_one() {
 }
 
 #[test]
-fn r453_caskody_text_rows_are_trip_notes_and_typed_designations_are_not_published() {
+fn r453_caskody_rows_are_trip_notes_typed_designations_included() {
     let mut batch = three_stops()
         .trip(LICENCE, 1, &[])
         .note(
@@ -143,14 +143,28 @@ fn r453_caskody_text_rows_are_trip_notes_and_typed_designations_are_not_publishe
     });
     let (assembled, _) = assemble(vec![batch]);
     let t = &assembled.timetable;
+    // The typed row without text is the printed mark with its days (B4).
     assert_eq!(
         notes(t),
-        [(
-            "jdf:trip:100001:251214:1:notice:trip:2",
-            NoteKind::TimetableNote,
-            Some("N"),
-            Some("Nejede o svátcích")
-        )]
+        [
+            (
+                "jdf:trip:100001:251214:1:notice:trip:1",
+                NoteKind::TimetableNote,
+                Some("1"),
+                None
+            ),
+            (
+                "jdf:trip:100001:251214:1:notice:trip:2",
+                NoteKind::TimetableNote,
+                Some("N"),
+                Some("Nejede o svátcích")
+            )
+        ]
+    );
+    let typed = &t.notes.rows()[0];
+    assert_eq!(
+        (typed.note_type.as_deref(), typed.valid_from),
+        (Some("no_service"), Some(jiff::civil::date(2026, 5, 1)))
     );
     assert!(matches!(
         t.assignments
@@ -162,7 +176,7 @@ fn r453_caskody_text_rows_are_trip_notes_and_typed_designations_are_not_publishe
 }
 
 #[test]
-fn r454_mistenky_rows_are_reservation_notes_and_trip_zero_is_dropped() {
+fn r454_mistenky_rows_are_reservation_notes_and_trip_zero_is_a_route_note() {
     let mut batch = three_stops().trip(LICENCE, 1, &[]).build();
     for trip in [1, 0] {
         batch.batch.reservations.push(Reservation {
@@ -173,16 +187,30 @@ fn r454_mistenky_rows_are_reservation_notes_and_trip_zero_is_dropped() {
         });
     }
     let (assembled, diagnostics) = assemble(vec![batch]);
+    let t = &assembled.timetable;
     assert_eq!(
-        notes(&assembled.timetable),
-        [(
-            "jdf:trip:100001:251214:1:notice:reservation:1",
-            NoteKind::ReservationNote,
-            None,
-            Some("Místenky povinné")
-        )]
+        notes(t),
+        [
+            (
+                "jdf:trip:100001:251214:1:notice:reservation:1",
+                NoteKind::ReservationNote,
+                None,
+                Some("Místenky povinné")
+            ),
+            (
+                "jdf:route:100001:notice:reservation:1",
+                NoteKind::ReservationNote,
+                None,
+                Some("Místenky povinné")
+            )
+        ]
     );
-    assert_eq!(count(&diagnostics, "jdf_reservation_without_trip"), 1);
+    assert!(
+        t.assignments
+            .iter()
+            .any(|a| matches!(a.scope, Scope::Route(_)))
+    );
+    assert_eq!(count(&diagnostics, "jdf_reservation_without_trip"), 0);
 }
 
 #[test]

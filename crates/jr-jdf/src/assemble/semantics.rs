@@ -22,19 +22,21 @@ pub const R452: Rule = Rule {
     summary: "Udaje rows are route information notes of their route",
 };
 
-/// `Caskody` rows with a text or an untyped designation are timetable notes of their trip
-/// (label = designation, text = note, validity = the row's dates, type = the type's name).
-/// Typed rows without text shape the calendar only and are not published (Q11), diagnosed.
+/// `Caskody` rows with a text or a designation are timetable notes of their trip (label =
+/// designation, text = note, validity = the row's dates, type = the type's name). A typed row
+/// without text, which also shapes the calendar, is published too: the printed timetable's mark
+/// with its days (`71`: does not run 24.12.) is what passengers are shown (B4 fixed,
+/// `docs/roadmap.md`).
 pub const R453: Rule = Rule {
     id: "JDF-R453",
-    summary: "Caskody rows with text are trip notes; typed designations are not published",
+    summary: "Caskody rows are trip notes, typed designations included",
 };
 
 /// `Mistenky` rows are reservation notes of their trip, numbered by their place among the
-/// trip's rows. Rows for trip 0 name no trip and are dropped, diagnosed (Q12).
+/// trip's rows; rows for trip 0 are notes of the whole route (B3 fixed, `docs/roadmap.md`).
 pub const R454: Rule = Rule {
     id: "JDF-R454",
-    summary: "Mistenky rows are reservation notes of their trip; trip 0 rows are dropped",
+    summary: "Mistenky rows are reservation notes of their trip, or of the route for trip 0",
 };
 
 /// Every note is linked to its route or trip by a note assignment; its ID is built from the
@@ -161,7 +163,6 @@ pub(crate) fn build(
     lines: &Lines,
     routes: &[Option<RouteId>],
     published: &Published,
-    jdf: &crate::Policy,
     policy: &Policy,
     timetable: &mut Timetable,
     diagnostics: &mut Diagnostics,
@@ -180,7 +181,6 @@ pub(crate) fn build(
             version,
             route.as_ref(),
             &trips,
-            jdf,
             policy,
             &mut notes,
             diagnostics,
@@ -208,7 +208,6 @@ fn version_notes(
     version: &Version,
     route: Option<&(RouteId, PublicId)>,
     trips: &HashMap<u64, &PublishedTrip>,
-    jdf: &crate::Policy,
     policy: &Policy,
     notes: &mut Notes<'_>,
     diagnostics: &mut Diagnostics,
@@ -249,14 +248,6 @@ fn version_notes(
         let source_object = format!("{subject}/{}:Caskody:{}", row.trip_id, row.id);
         let body = text(row.note.as_deref());
         let label = text(Some(&row.designation));
-        let typed = row.note_type.as_ref().is_some_and(|t| {
-            jdf.calendar.note_types.contains_key(t.code()) || p.note_types.contains_key(t.code())
-        });
-        if typed && body.is_none() {
-            // It shaped the trip's calendar (JDF-R255–R264); its label is not published
-            // (verdict Q11, a recorded limitation), which loses no fact of the timetable.
-            continue;
-        }
         if body.is_none() && label.is_none() {
             diagnostics.push(
                 Diagnostic::new(
@@ -293,18 +284,6 @@ fn version_notes(
         let ordinal = ordinals.entry(row.trip_id).or_default();
         *ordinal += 1;
         let source_object = format!("{subject}/{}:Mistenky:{ordinal}", row.trip_id);
-        if row.trip_id == 0 {
-            diagnostics.push(
-                Diagnostic::new(
-                    "jdf_reservation_without_trip",
-                    Severity::Warning,
-                    source_object,
-                    "a Mistenky row for trip 0 names no trip: dropped (Q12)",
-                )
-                .rule(R454),
-            );
-            continue;
-        }
         let Some(body) = text(Some(&row.note)) else {
             diagnostics.push(
                 Diagnostic::new(
@@ -317,12 +296,21 @@ fn version_notes(
             );
             continue;
         };
-        let Some(trip) = trips.get(&row.trip_id) else {
-            diagnostics.push(dropped(source_object, "reservation note", R454));
-            continue;
+        let (owner_id, scope) = if row.trip_id == 0 {
+            let Some((handle, route_id)) = route else {
+                diagnostics.push(dropped(source_object, "reservation note", R454));
+                continue;
+            };
+            (route_id, Scope::Route(*handle))
+        } else {
+            let Some(trip) = trips.get(&row.trip_id) else {
+                diagnostics.push(dropped(source_object, "reservation note", R454));
+                continue;
+            };
+            (&trip.id, Scope::Trip(trip.handle))
         };
         let note = Note {
-            id: identity::jdf::note(&trip.id, &p.reservation_kind, *ordinal),
+            id: identity::jdf::note(owner_id, &p.reservation_kind, *ordinal),
             kind: NoteKind::ReservationNote,
             label: None,
             text: Some(body),
@@ -331,7 +319,7 @@ fn version_notes(
             note_type: None,
             source_object: source_object.into(),
         };
-        notes.add(note, Scope::Trip(trip.handle));
+        notes.add(note, scope);
     }
 }
 

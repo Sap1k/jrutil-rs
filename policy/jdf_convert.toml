@@ -63,11 +63,14 @@ detour_description = "Výlukový jízdní řád"
 wheelchair_trip = ["@", "{"]
 bikes_trip = ["O"]
 wheelchair_stop = "@"
-# R444: in this order, the first present decides the service of a call.
+# R444: arrangement (`phone_agency`) over request (`ask_driver`) over regular.
 ask_driver = ["x"]
 phone_agency = ["!", "T"]
-no_pickup = ["(", "$"]
-no_dropoff = [")", "$"]
+# R444: `$` (no stop at a border crossing) holds from any level; `(` and `)` exclude each other,
+# the most specific level (call, route stop, stop) carrying either deciding.
+both_directions_none = ["$"]
+no_pickup = ["("]
+no_dropoff = [")"]
 # R462: exclusion codes and their restriction groups.
 restrictions = { "§" = "§", A = "A", B = "B", C = "C" }
 # R457: calendar codes (`X`, `+`, any all-digit code) are calendar designations.

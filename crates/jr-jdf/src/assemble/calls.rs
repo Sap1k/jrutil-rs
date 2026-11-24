@@ -84,12 +84,15 @@ pub const R443: Rule = Rule {
     summary: "The call sequence is the index among all ordered calls",
 };
 
-/// Pickup and drop-off from the codes of the call's stop and of the call only (verdict Q3; B1,
-/// B2 stand): `x` on request, else `!` or `T` by arrangement, else regular; `(` or `$` no
-/// pickup, `)` or `$` no drop-off.
+/// Pickup and drop-off from the codes of the call, its route stop (`Zaslinky`: "the default for
+/// all trips of the line", JDF 1.11), its stop and its trip (B1, B2, B23 fixed,
+/// `docs/roadmap.md`). A trip's `T` or `!` reaches every call unless some of its calls carry
+/// that code themselves, which then are the ones it means ("obsluhu označených zastávek").
+/// Arrangement (`T`, `!`) over request (`x`) over regular. `(` and `)` exclude each other: the
+/// most specific level carrying either decides; `$` holds from any level.
 pub const R444: Rule = Rule {
     id: "JDF-R444",
-    summary: "Pickup and drop-off follow the stop's and the call's own codes",
+    summary: "Pickup and drop-off follow the codes of the call, route stop, stop and trip",
 };
 
 /// Every JDF time is a timepoint; the 1.11 time windows are not carried (verdict Q10).
@@ -266,6 +269,11 @@ pub(crate) fn plan(
     for version in &merged.versions {
         let subject = version.subject();
         let zones = route_stop_zones(version, timetable, diagnostics);
+        let route_stop_codes: HashMap<u64, &[Box<str>]> = version
+            .route_stops
+            .iter()
+            .map(|rs| (rs.route_stop_id, merged.code_sets.get(rs.codes)))
+            .collect();
         let mut planned = Vec::with_capacity(version.trips.len());
         'trips: for (index, trip) in version.trips.iter().enumerate() {
             let trip_subject = || format!("{subject}/{}", trip.id);
@@ -295,6 +303,19 @@ pub(crate) fn plan(
                 offset: 0,
                 max_gap: policy.times.max_midnight_gap_minutes,
             };
+            // R444: the trip's arrangement codes its calls do not narrow down.
+            let trip_codes = merged.code_sets.get(trip.codes);
+            let trip_wide: Vec<&Box<str>> = codes
+                .phone_agency
+                .iter()
+                .filter(|code| trip_codes.contains(code))
+                .filter(|code| {
+                    !trip
+                        .calls
+                        .iter()
+                        .any(|c| merged.code_sets.get(c.codes).contains(code))
+                })
+                .collect();
             let mut calls = Vec::new();
             let mut ordered = Vec::with_capacity(order.len());
             for (sequence, &at) in order.iter().enumerate() {
@@ -352,16 +373,31 @@ pub(crate) fn plan(
                     (None, None) => continue,
                 };
                 let stop = &merged.stops[call.stop as usize];
-                let call_codes = merged.code_sets.get(call.codes);
-                let stop_codes = merged.code_sets.get(stop.codes);
-                let flag = |list: &[Box<str>]| has(call_codes, list) || has(stop_codes, list);
-                let service = if flag(&codes.ask_driver) {
-                    Boarding::AskDriver
-                } else if flag(&codes.phone_agency) {
+                // R444, most specific level first.
+                let levels: [&[Box<str>]; 3] = [
+                    merged.code_sets.get(call.codes),
+                    route_stop_codes
+                        .get(&call.route_stop_id)
+                        .copied()
+                        .unwrap_or_default(),
+                    merged.code_sets.get(stop.codes),
+                ];
+                let flag = |list: &[Box<str>]| levels.iter().any(|level| has(level, list));
+                let service = if flag(&codes.phone_agency) || !trip_wide.is_empty() {
                     Boarding::PhoneAgency
+                } else if flag(&codes.ask_driver) {
+                    Boarding::AskDriver
                 } else {
                     Boarding::Regular
                 };
+                let exclusive = levels
+                    .iter()
+                    .find(|level| has(level, &codes.no_pickup) || has(level, &codes.no_dropoff))
+                    .copied()
+                    .unwrap_or_default();
+                let border = flag(&codes.both_directions_none);
+                let no_pickup = border || has(exclusive, &codes.no_pickup);
+                let no_dropoff = border || has(exclusive, &codes.no_dropoff);
                 let number = call
                     .stop_post_number
                     .map(|sym| merged.texts.get(sym).trim())
@@ -398,16 +434,8 @@ pub(crate) fn plan(
                     arrival,
                     departure,
                     sequence,
-                    pickup: if flag(&codes.no_pickup) {
-                        Boarding::None
-                    } else {
-                        service
-                    },
-                    dropoff: if flag(&codes.no_dropoff) {
-                        Boarding::None
-                    } else {
-                        service
-                    },
+                    pickup: if no_pickup { Boarding::None } else { service },
+                    dropoff: if no_dropoff { Boarding::None } else { service },
                     zones: zones.get(&call.route_stop_id).copied().flatten(),
                     kilometre: call.km.map(|km| km.value()),
                 });

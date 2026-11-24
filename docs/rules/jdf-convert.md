@@ -2056,3 +2056,24 @@ Proposed `jr-publish` projection `filtered_gtfs(timetable_pre_overlay, rules, re
 #### JDF-R482 — Filtered feed: empty selections
 - **What:** sections 6.2 step 5 and 6.4: a query that matches no line, and a feed without a
   trip, fail the build.
+
+#### JDF-R483 — Alternate operators by day
+- **What:** an `Altdop` row names the operator of its trip (or, with trip number `0`, of every
+  trip of the line) on the days it describes: its day attributes (`X`, `+`, day numbers; none:
+  every day), its odd or even weeks (time code type 5 or 6) and its period (`date_from ..=
+  date_to`, one day without `date_to`). Per day the first matching row in file order decides; a
+  day no row matches is the line's operator's.
+- **Why:** JDF 1.11, `Altdop`: "Určení dopravce se provádí nalezením prvního vyhovujícího
+  dopravce pro daný den" (`docs/roadmap.md`, jdf-convert B21). F# read the rows and published
+  every trip under the line's operator.
+- **Diagnostic:** `jdf_trip_alternate_operator` (info), per trip another operator runs.
+
+#### JDF-R484 — A trip split by operator
+- **What:** each other operator's days of a trip become a trip of their own (a `SplitTrip`
+  copy, `identity::jdf::operator_trip`) under that operator's variant of the route (the route
+  copied with the operator's agency, its route assignments and keys;
+  `identity::jdf::operator_route`). The line's operator keeps the trip's ID, or, where it runs
+  none of the days, the first alternate operator in `Altdop` order. A trip one alternate
+  operator runs on all its days only moves to that operator's route. Applied by the pipeline
+  after the post estimator, so the parts keep the estimated boarding points.
+- **Why:** GTFS knows one operator per route; passengers board the operator that runs the day.

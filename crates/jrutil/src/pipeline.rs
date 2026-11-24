@@ -516,6 +516,25 @@ pub fn jdf(spec: &JdfSpec, options: &RunOptions) -> Result<(), BuildError> {
         estimated_posts = Some(summary);
     }
 
+    // JDF-R484: after the posts, so each part keeps the boarding points chosen for the trip. A
+    // variant route belongs to its route's line.
+    let mut lines = assembled.lines;
+    if !assembled.operators.is_empty() {
+        let (edits, variants) = assemble::operators::edits(&timetable, &assembled.operators);
+        pass(&mut timetable, edits, &precedence, &mut diagnostics)?;
+        for (route, variant) in variants {
+            let of_route: Vec<_> = lines
+                .iter()
+                .filter(|line| line.route == Some(route))
+                .cloned()
+                .collect();
+            lines.extend(of_route.into_iter().map(|mut line| {
+                line.route = Some(variant);
+                line
+            }));
+        }
+    }
+
     let (edits, mut route_presentation) =
         presentation::route_presentation(&timetable, &sources.presentation, &mut diagnostics)?;
     pass(&mut timetable, edits, &precedence, &mut diagnostics)?;
@@ -633,7 +652,7 @@ pub fn jdf(spec: &JdfSpec, options: &RunOptions) -> Result<(), BuildError> {
     if let Some(filtered) = &spec.filtered {
         filtered_feed(
             before_overlay.unwrap_or(timetable),
-            &assembled.lines,
+            &lines,
             filtered,
             spec.reference_date,
             &options,
