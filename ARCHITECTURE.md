@@ -27,8 +27,8 @@ compiler: it reads files it is given, never the network, and the same inputs giv
 The pipeline order is declared once, in `crates/jrutil/src/pipeline.rs`:
 
 ```
-czptt:  compile → coordinates → replacement-bus connections → route-stop order → [shapes]
-        → publish
+czptt:  compile → coordinates → replacement-bus connections → [regional train keys]
+        → route-stop order → [shapes] → publish
 jdf:    read batches → stop matching ┐ (per batch, in parallel)
                         merge ◄──────┘ (in batch-name order; calls only for versions that win)
         → international filter → assemble → [post estimator] → presentation
@@ -36,9 +36,12 @@ jdf:    read batches → stop matching ┐ (per batch, in parallel)
         (+ the filtered feed, from the timetable as it stands before the overlay and the shapes)
 ```
 
-Stages in brackets run when the build specification asks for them. Planned and not built: rail
-platforms, connections from the infrastructure manager's list, a foreign rail overlay
-(`[rail platforms]`, `[connections]`, `[foreign overlay]` after the rail coordinates).
+Stages in brackets run when the build specification asks for them. Regional train keys
+(`[[czptt.train_keys]]`, OVL-R132) give the national trains the trip IDs a regional feed's
+realtime names them by; they come from `jr-overlay`, which owns the regional source profiles.
+Planned and not built: rail platforms, connections from the infrastructure manager's list, a
+foreign rail overlay (`[rail platforms]`, `[connections]`, `[foreign overlay]` after the rail
+coordinates).
 
 ## Crates
 
@@ -51,7 +54,7 @@ platforms, connections from the infrastructure manager's list, a foreign rail ov
 | `jr-jdf` | the road compiler | no |
 | `jr-enrich` | coordinates, route rules and presentation, connections, rail platforms, route-stop order, shapes hand-off | no |
 | `jr-posts` | post estimator: capture → evidence store → policy and scorer → edits | no |
-| `jr-overlay` | GTFS overlay engine: source profiles, matching, projection → edits | no |
+| `jr-overlay` | GTFS overlay engine: source profiles, matching, projection → edits; regional train keys for the rail package | no |
 | `jr-publish` | serving relations, GTFS projection, manifest, diagnostics, `validate`, `compare` | yes |
 | `jrutil` | CLI, build spec, pipeline order, cache files, progress, the shapes companion process | yes |
 
@@ -113,18 +116,23 @@ graph is still built on every run: the digests need it.
 pattern content.
 
 Not cached, by measurement: a parsed and matched JDF batch, a CZPTT source object, an overlay
-source snapshot. On the golden slice the whole road build without posts takes 17 s and the rail
-build under a second; a batch's stop matching depends on the registry, the catalogues and the
-OSM stops, so any geodata change would invalidate every batch anyway. If the national build
-shows a stage worth caching, it gets one then.
+source snapshot. A batch's stop matching depends on the registry, the catalogues and the OSM
+stops, so any geodata change would invalidate every batch anyway. The national road build
+confirmed routing as the one stage worth it: 10 min with a cold routing cache, 3 min warm
+(`docs/golden.md`); rail takes 36 s.
 
 ## Parity
 
-Until a package has switched, `jrutil compare <f#> <rust> --expect parity/<package>.toml` judges
-it on the golden subset (`docs/golden.md`) at two levels: by ID where IDs are in the kept scheme,
+Both packages have switched (2026-11-23); F# JrUtil is no longer run. Before the switch,
+`jrutil compare <f#> <rust> --expect parity/<package>.toml` judged each package on the golden
+subset (`docs/golden.md`), then once nationally, at two levels: by ID where IDs are in the kept scheme,
 and as schedules (service date + journey key → calls, times, boarding points, presentation,
 attached semantics) where they are not. Every difference falls into a ledger category with a
-reason and an expected count; anything else fails.
+reason and an expected count; anything else fails. The ledgers record the national counts
+(`czptt.toml`, `jdf-full.toml`) and stay as the record of every deliberate difference from F#.
+`jrutil compare` remains the tool for comparing two builds of this compiler, such as a release
+against a candidate; the golden overlay ledger (`jdf-overlay.toml`) predates
+`keep_source_calls` and no longer passes against its F# reference.
 
 ## Extension seams
 

@@ -1,8 +1,9 @@
 # AGENTS.md
 
 jrutil-rs compiles Czech timetable sources (JDF, CZPTT, regional and foreign GTFS, curated data)
-into the `jrutil-production` packages Oběhy serves. It replaces the F# JrUtil
-(`E:/Git/obehy/jrutil`), which is the behavioural reference until each package has switched.
+into the `jrutil-production` packages Oběhy serves. It replaced the F# JrUtil
+(`E:/Git/obehy/jrutil`) in Oběhy's production build on 2026-11-23, for both packages; F# is
+history now, and `parity/` records every deliberate difference from it.
 `ARCHITECTURE.md` is the design; this file is the rules. Read both before changing anything.
 
 ## The rules
@@ -32,10 +33,13 @@ into the `jrutil-production` packages Oběhy serves. It replaces the F# JrUtil
 8. **In memory, flat, parallel.** Dense integer handles, vectors, `DateSet` bitsets, rayon. No
    spill files, no memory budgets. If a structure does not fit, redesign it.
 9. **The cache is an optimisation.** A build with `--no-cache` is byte-identical.
-10. **Parity is explained, not approximate.** Until a package has switched, its output is compared
-    with F# on the golden subset (`jrutil compare --expect parity/<package>.toml`). Every
-    difference belongs to a ledger category with a reason. F# bugs are fixed and ledgered, never
-    reproduced.
+10. **Differences are explained, not approximate.** A change that alters a package is judged by
+    `jrutil compare` against the previous build on the golden subset, and every difference has a
+    reason. Before the switch this was parity with F# (`parity/<package>.toml`); F# bugs were
+    fixed and ledgered, never reproduced.
+11. **Oběhy is the consumer.** The serving contract (`contracts/serving-v5.json`) and the build
+    specification are Oběhy's interface: a contract change bumps its version, and a change to
+    the specification lands with the matching change in Oběhy's `src/obehy/static_build.py`.
 
 ## Layering
 

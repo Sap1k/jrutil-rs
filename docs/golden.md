@@ -1,7 +1,8 @@
 # The golden subset
 
-Parity with the F# JrUtil and speed are judged on a bounded, frozen subset of real data, never
-on the full national feed. The subset lives outside the repository, under one root
+Changes are judged on a bounded, frozen subset of real data, never on the full national feed.
+Until the switch (2026-11-23) the subset was where parity with the F# JrUtil was established;
+the F# references below are pinned and are not rebuilt. The subset lives outside the repository, under one root
 (`E:/Git/obehy/work/jrutil-rs-golden` on the development machine).
 
 ## Rail (CZPTT)
@@ -219,3 +220,7 @@ Both are F# runs on the registry-numbered chain, made once (2026-11-22):
 - One F# reference run per chain; it is pinned, not re-measured.
 - While working, run only the stage being changed, once.
 - A full national build happens once per package switch, with the maintainer.
+- Since the national road comparison the overlay profiles keep source calls, so the golden
+  overlay ledger (`jdf-overlay.toml`) no longer passes against the F# reference built with the
+  older policy; `parity/jdf-full.toml` with its national counts is
+  the judge. Compare a change against the previous jrutil-rs build of the same slice instead.

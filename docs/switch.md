@@ -1,14 +1,35 @@
-# Switching Oběhy to jrutil-rs
+# Oběhy and jrutil-rs
 
-Two switches: rail (the `czptt` package), then road (the `jdf` package with estimated posts,
-the regional overlay and the filtered feed). Each has the same three steps: one national build
-compared with the F# build of the same snapshots, the Oběhy-side change, the first production
-build watched. Parity on the golden subset (`docs/golden.md`) is the precondition and holds for
-both packages.
+Oběhy's production build switched from F# JrUtil to jrutil-rs on 2026-11-23, for both packages
+at once (Oběhy `001ccdf`, jrutil-rs `5934475`). This document records how that was done and how
+Oběhy runs the compiler now. Parity on the golden subset (`docs/golden.md`) was the
+precondition; one national comparison per package was the check.
+
+## How Oběhy runs it
+
+- `obehy build` writes `<run>/build.toml` (`src/obehy/static_build.py`) with both packages and
+  runs `jrutil build --spec <run>/build.toml --progress-events` once. The `JRUTIL_PROGRESS
+  {"event":"phase",…}` lines on stderr feed Oběhy's progress reporter; `--jobs` becomes
+  `RAYON_NUM_THREADS`. `jrutil build` refuses to leave an invalid package in place.
+- The specification it writes has `[czptt]` with one `[[czptt.train_keys]]` (IDS JMK), and
+  `[jdf]` with the two `[[jdf.exports]]`, `[jdf.posts]`, `[jdf.overlay]` with PID and IDS JMK and
+  `[jdf.filtered]`; `[czptt.shapes]` and `[jdf.shapes]` when route shapes are on. The national comparison specifications below
+  have the same shape.
+- The compiler is built from source: `build.yml` checks out `Sap1k/jrutil-rs` at
+  `jrutil_rs_ref` (default `main`) and `obehy build` runs `cargo build --release --locked -p
+  jrutil`; locally the checkout is `[jrutil] directory` in `obehy.local.toml`. Build and run
+  share a machine, so the projection's `sin`, `cos`, `atan2` come from the same `libm`.
+- `manifest.json` names the compiler (`jrutil-rs`, the version or commit) and each source by ID
+  and SHA-256; retrieval times, URLs and licences stay in Oběhy's `release.json`.
+- Still outside this repository: the gazetteers (`cz_regions.json.gz`, `cz_towns.json.gz`,
+  `eur_towns_countries.csv`) are read from the F# JrUtil checkout (`[paths] gazetteer_dir`),
+  and the route-shapes companion is a release of that repository. Both should move (the
+  gazetteers to `jrunify-ext-geodata`) before Oběhy drops the `converters/jrutil` submodule.
 
 ## 1. The national comparison
 
-Made once per switch, with the maintainer, on the snapshots of one production run. Run
+Made once per package, with the maintainer, on the snapshots of one production run (rail
+2026-11-22, road 2026-11-22/23; results in `docs/golden.md`). To repeat it, run
 `obehy build --keep-work` (F# JrUtil) so that the run directory keeps its sources and its F#
 packages, then build the same inputs with `jrutil build` and compare. Nothing here writes to the
 run directory: the specification lives next to it and writes below `rs/`.
@@ -110,30 +131,16 @@ Read the result as for rail. The estimated posts are judged by accuracy, not by 
 for both packages. The filtered feed is compared with Python's (`gtfs.zip` member by member,
 `line-snapshot.json`). Note the wall time and the peak memory of both builds.
 
-## 2. What changes in Oběhy
+## 2. What changed in Oběhy
 
-Only at the switch, in one commit each. The serving contract, the loader, the API and
-`obehy-rt` do not change.
+Both switches landed in one commit (`001ccdf`), which replaced every F# invocation with the
+single `jrutil build` above and deleted the steps the compiler absorbed. The serving contract,
+the loader, the API and `obehy-rt` did not change. The tables map each F# step or flag to what
+replaced it.
 
-### Both switches
+### Rail
 
-- `pipeline/jrutil.py`: the runtime is the `jrutil` binary of a pinned jrutil-rs ref.
-  `build.yml` checks the ref out and runs `cargo build --release --locked -p jrutil`, as it
-  builds the F# multitool from its checkout today; a local build does the same from
-  `[jrutil] directory`. The build and the run happen on the same machine, so the platform's
-  `libm` is the same for both (the projection uses `sin`, `cos`, `atan2`).
-- The compiler is invoked as `jrutil build --spec <file> --progress-events`. With the flag it
-  prints the `JRUTIL_PROGRESS {"event":"phase",…}` lines `pipeline/process.py` already reads;
-  `--jobs` becomes `RAYON_NUM_THREADS`, and there is no memory budget to pass.
-- `jrutil validate <package>` replaces `validate-package`; `jrutil build` already refuses to
-  leave an invalid package in place.
-- Provenance: `manifest.json` names the compiler (`jrutil-rs`, its version) and each source by
-  ID and SHA-256. Retrieval times, URLs and licences stay where Oběhy records them
-  (`release.json`); the snapshot descriptors are no longer passed to the compiler.
-
-### Switch 1 (rail)
-
-| Today | After |
+| F# | jrutil-rs |
 |---|---|
 | `flatten_messages` → `derived/messages.zip` | gone: the compiler orders the messages of the snapshot |
 | `czptt-to-bundle --catalog-snapshot --sr70 --osm-pbf --operational-points=sidecar` | `[czptt] snapshot`, `osm` |
@@ -141,11 +148,9 @@ Only at the switch, in one commit each. The serving contract, the loader, the AP
 | `--diagnostics-out` and `_verify_foreign_coordinate_acceptance` | gone: `diagnostics.json` carries the coordinate summary, and an unplaceable station makes the package ineligible |
 | `_verify_gtfs_stops` | stays (it reads the package's GTFS) |
 
-`NATIONAL_CZPTT.md` and `STATIC_PIPELINE.md` are updated in the same commit.
+### Road
 
-### Switch 2 (road)
-
-| Today | After |
+| F# | jrutil-rs |
 |---|---|
 | `stage_nested_jdf_batches` | gone: `[[jdf.exports]]` names the downloaded archives |
 | `fix-jdf`, `merge-jdf`, `jdf-to-bundle`, `regional-gtfs-overlay` | one `[jdf]` build |
@@ -158,17 +163,13 @@ Only at the switch, in one commit each. The serving contract, the loader, the AP
 | `filtered_jdf.py` | `[jdf.filtered]` |
 | `--international-route-policy=regional-adjacent`, `--strict`, `--batch-output`, `--memory-budget` | gone: the first is the compiler's only behaviour, the others have no counterpart |
 
-`national_jdf.py`, `regional_overlay.py` and `filtered_jdf.py` collapse to writing the
-specification and one invocation. The gazetteers (`cz_regions.json.gz`, `cz_towns.json.gz`,
-`eur_towns_countries.csv`) live in the F# checkout today; they move to `jrunify-ext-geodata`
-before the `converters/jrutil` submodule is removed. The route-shapes companion keeps its
-repository. `STATIC_PIPELINE.md`, `BASE_PLAN.md` §11 and `AGENTS.md` are updated in the same
-commit.
+The F# invocations, `filtered_jdf.py`, the message flattening, the osmium demand clip and the
+`obehy-national-*` commands are gone; `src/obehy/static_build.py` writes the specification.
 
-## 3. Decisions to confirm before a switch
+## 3. Deliberate differences from F#
 
-Differences from F# that are deliberate and visible to a consumer; each is a ledger category
-with its reason, listed here so that the maintainer can veto one before it reaches production.
+Differences that are visible to a consumer and shipped with the switch; each is a ledger
+category with its reason. Any of them can still be revisited.
 
 Rail (national comparison done 2026-11-22, `docs/golden.md`):
 - a train with a negative day offset moves its dates, not only its times (F# bug fixed; five
