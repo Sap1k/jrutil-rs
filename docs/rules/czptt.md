@@ -2277,6 +2277,48 @@ zone memberships (with calendar), transfers as trip-to-trip facts, per-entity di
 - **Constants:** `czptt.keys.sr70_country = "CZ"`, `czptt.keys.sr70_code_length = 5`.
 - **Diagnostic:** none (a train number taken from the TR core is diagnosed by R057).
 
+#### CZPTT-R119 — Calendar-limited IDS memberships
+- **What:** a `CZIPTS` value's sixth field names a `CZCalendarIPTS` value of the same message
+  (`id|from|to|bitmap|`, the bitmap counting days from `from`, cut at `to`); the membership
+  holds on the bitmap's days only. A calendar that cannot be found or read is diagnosed, and the
+  membership then holds every day.
+- **Where:** `jr-czptt` `notes/zones.rs`.
+- **Why:** B17 (fixed after the switch, `docs/roadmap.md`): SŽ limits a membership to the days
+  the IDS contract covers. GVD 2026: no annual message, 90 of 44,794 change messages, all year.
+- **Constants:** `czptt.zones.calendar_parameter = "CZCalendarIPTS"`.
+- **Diagnostic:** `czptt_ids_calendar_unread` (warning).
+
+#### CZPTT-R120 — A trip split where its IDS zones differ by day
+- **What:** the days on which some of a path's memberships do not hold are grouped by which
+  ones; each group is a copy of every part of the path (`SplitTrip`) with the zones that hold
+  (`SetCallZones` on the calls that differ), named `identity::czptt::ids_variant` after those
+  memberships as written. The days on which every membership holds keep the trip's ID (when
+  there are none, the first group does). A pass (`ids_days::edits`) the pipeline applies right
+  after the compiler, so the copies carry the notes, keys and transfers of the trip.
+- **Where:** `jr-czptt` `assemble.rs` (decision), `ids_days.rs` (edits).
+- **Why:** a call's zones are per call, not per day; a passenger's fare depends on the day.
+
+#### CZPTT-R121 — The direction of a train
+- **What:** per route, the trip with the most distinct passenger places (then the smallest
+  public ID) has direction 0; a trip takes the direction of an already directed trip it shares
+  at least two passenger places with (the one sharing most, then the smallest public ID), or
+  the other one when more of the consecutive shared places are visited in reverse than in
+  order. Rounds repeat until nothing changes; a trip still undecided, or whose comparison ties,
+  has no direction.
+- **Where:** `jr-czptt` `assemble/direction.rs`.
+- **Why:** serving verdict 1 (revisited after the switch, `docs/roadmap.md`): a rail line's
+  route stops held both directions of travel in one list.
+- **Diagnostic:** `czptt_direction_undecided` (info).
+
+#### CZPTT-R122 — A catalogue line version boundary inside a path
+- **What:** a part whose catalogue line (R056) has another version, or none, on the path's last
+  running day than on its first is diagnosed; the first day's version still applies.
+- **Where:** `jr-czptt` `assemble/routes.rs`.
+- **Why:** B27: choosing the version per day would split trips by date, and no line or IDS
+  entry of the KADR catalogue changes version inside GVD 2026 (measured 2026-11-25). The
+  diagnostic shows the day it starts to matter.
+- **Diagnostic:** `czptt_line_version_changes` (warning).
+
 #### Dropped by the rewrite
 - **CZPTT-R048** (edge timing copied across a shared point): dropped: unreachable since parts are
   cut from passenger calls. Adjacent parts share one boundary call, so one side cannot be timed

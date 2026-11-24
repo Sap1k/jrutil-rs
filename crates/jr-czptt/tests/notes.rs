@@ -340,3 +340,49 @@ fn r085_r086_a_fare_band_puts_passenger_calls_in_its_zone() {
     assert!(has(&diagnostics, "czptt_ids_malformed"));
     assert!(has(&diagnostics, "czptt_ids_unresolved"));
 }
+
+#[test]
+fn r119_r120_a_membership_limited_to_some_days_splits_the_trip() {
+    // As in the KADR075002 change message: the train runs 14.–19.12., its IDS membership holds
+    // 15.–19.12. only.
+    let mut message = support::timetable(vec![stop("57076", "08:00:00"), stop("57016", "08:20:00")]);
+    message.calendar = support::calendar(
+        jiff::civil::date(2025, 12, 14),
+        Some(jiff::civil::date(2025, 12, 19)),
+        "111111",
+    );
+    let message = root(message, "CZIPTS", "11|CZ57076||CZ57016||1");
+    let message = root(message, "CZCalendarIPTS", "1|20251215|20251219|11111|");
+    let (compiled, diagnostics) = compile_timetable(vec![annual(1, message)]);
+    assert!(!has(&diagnostics, "czptt_ids_calendar_unread"));
+    let mut timetable = compiled.timetable;
+    let edits = jr_czptt::ids_days::edits(&timetable, &compiled.ids_days);
+    let precedence = jr_model::edit::Precedence {
+        position: Vec::new(),
+    };
+    jr_model::edit::apply(&mut timetable, edits, &precedence, &mut jr_model::Diagnostics::new()).unwrap();
+    assert_eq!(timetable.check(), []);
+    let horizon = timetable.horizon;
+    let trips: Vec<(&str, Vec<String>, usize)> = timetable
+        .trips
+        .rows()
+        .iter()
+        .map(|trip| {
+            let days: Vec<String> = timetable
+                .services
+                .get(trip.service)
+                .dates(horizon)
+                .map(|day| day.to_string())
+                .collect();
+            let zoned = trip.calls.iter().filter(|call| call.zones.is_some()).count();
+            (trip.id.as_str(), days, zoned)
+        })
+        .collect();
+    assert_eq!(trips.len(), 2);
+    let (kept, split) = (&trips[0], &trips[1]);
+    assert_eq!(kept.1.len(), 5);
+    assert_eq!(kept.2, 2, "the membership holds 15.–19.12.");
+    assert_eq!(split.1, ["2025-12-14"]);
+    assert_eq!(split.2, 0, "no zone on 14.12.");
+    assert!(split.0.starts_with(&format!("{}:ids:", kept.0)));
+}

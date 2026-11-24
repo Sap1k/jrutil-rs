@@ -238,6 +238,8 @@ pub struct CentralFeature {
 #[serde(deny_unknown_fields)]
 pub struct ZonesPolicy {
     pub parameter: Box<str>,
+    /// R119: the parameter holding a membership's calendar.
+    pub calendar_parameter: Box<str>,
     pub fare_band_word: Box<str>,
     pub system_separator: char,
 }

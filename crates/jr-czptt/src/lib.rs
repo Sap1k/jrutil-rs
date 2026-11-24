@@ -6,6 +6,7 @@
 //! See ARCHITECTURE.md.
 
 pub mod connections;
+pub mod ids_days;
 pub mod path;
 pub mod policy;
 
@@ -34,6 +35,8 @@ pub type PointNames = std::collections::BTreeMap<(Box<str>, Box<str>), Box<str>>
 pub struct Compiled {
     pub timetable: jr_model::Timetable,
     pub summary: Summary,
+    /// Trips whose IDS zones differ by day, split by [`ids_days::edits`] (R120).
+    pub ids_days: ids_days::IdsDays,
 }
 
 /// Messages to timetable: [`paths`], then the assembly of places, routes, trips, notes, zones
@@ -48,9 +51,13 @@ pub fn compile(
     diagnostics: &mut Diagnostics,
 ) -> Result<Compiled, CompileError> {
     let paths = paths(messages, catalog, timetable_year, policy, diagnostics)?;
-    let (timetable, summary) =
+    let (timetable, summary, ids_days) =
         assemble::assemble(&paths, catalog, point_names, policy, diagnostics);
-    Ok(Compiled { timetable, summary })
+    Ok(Compiled {
+        timetable,
+        summary,
+        ids_days,
+    })
 }
 
 /// Paths are processed in ordinal order of their PA identifier text, so every later
@@ -131,6 +138,10 @@ pub const RULES: &[Rule] = &[
     connections::R083,
     notes::R085,
     notes::R086,
+    notes::R119,
+    ids_days::R120,
+    assemble::R121,
+    assemble::R122,
     merge::R116,
     segment::R117,
     assemble::R118,

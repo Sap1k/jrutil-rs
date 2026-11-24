@@ -2,6 +2,10 @@
 //! (R056–R061, R080), trips and calls (R057, R062–R069), keys (R118), and the notes,
 //! zones and transfers of each accepted path.
 
+mod direction;
+
+pub(crate) use direction::R121;
+pub(crate) use routes::R122;
 mod points;
 mod routes;
 
@@ -21,7 +25,7 @@ use serde::Serialize;
 
 use crate::path::{Call, Part, Path, RejectionReason};
 use crate::policy::Policy;
-use crate::{Paths, PointNames, notes, transfers};
+use crate::{Paths, PointNames, ids_days, notes, transfers};
 
 pub(crate) use points::{R052, R053, R054, R055};
 pub(crate) use routes::{R056, R058, R059, R060, R061, R080, valid_at};
@@ -114,6 +118,8 @@ struct Builder<'a> {
     routes: HashMap<PublicId, RouteId>,
     /// Points with a passenger call of a part (R052).
     stop_places: BTreeSet<(Box<str>, Box<str>)>,
+    /// R120.
+    ids_days: ids_days::IdsDays,
 }
 
 pub(crate) fn assemble(
@@ -122,7 +128,7 @@ pub(crate) fn assemble(
     point_names: &PointNames,
     policy: &Policy,
     diagnostics: &mut Diagnostics,
-) -> (Timetable, Summary) {
+) -> (Timetable, Summary, ids_days::IdsDays) {
     let mut timetable = Timetable::new(Feed::Czptt, paths.horizon);
     timetable.source_version = paths.source_version.clone();
     let mut builder = Builder {
@@ -138,6 +144,7 @@ pub(crate) fn assemble(
         agencies: BTreeMap::new(),
         routes: HashMap::new(),
         stop_places: BTreeSet::new(),
+        ids_days: ids_days::IdsDays::default(),
     };
     let mut summary = Summary {
         paths_cancelled: paths.cancelled.len(),
@@ -186,6 +193,7 @@ pub(crate) fn assemble(
         builder.path(path, diagnostics);
     }
     builder.keys();
+    direction::assign(&mut builder.timetable, diagnostics);
     for place in &builder.name_conflicts {
         diagnostics.push(
             Diagnostic::new(
@@ -200,7 +208,7 @@ pub(crate) fn assemble(
     summary.trips = builder.timetable.trips.len();
     summary.places = builder.timetable.places.len();
     summary.notes = builder.timetable.notes.len();
-    (builder.timetable, summary)
+    (builder.timetable, summary, builder.ids_days)
 }
 
 /// A call's display name (R053, R063): the catalogue's, else the source's own.
@@ -222,7 +230,14 @@ impl Builder<'_> {
             policy,
             diagnostics,
         );
-        let zones = notes::zones(path, self.catalog, policy, diagnostics);
+        let memberships = notes::memberships(
+            path,
+            self.catalog,
+            self.timetable.horizon,
+            policy,
+            diagnostics,
+        );
+        let zones = notes::zones(path, &memberships, |_| true);
         let service = self.timetable.services.intern(path.dates);
         let headsign =
             path.calls.iter().rfind(|call| call.passenger).map(|call| {
@@ -264,6 +279,16 @@ impl Builder<'_> {
                     path.tr_core.as_deref()
                 }
             };
+            if let Some((first, last)) = self.running_window(&path.dates) {
+                routes::check_line_version(
+                    pa,
+                    part.key.line.as_deref(),
+                    first,
+                    last,
+                    self.catalog,
+                    diagnostics,
+                );
+            }
             let agency = self.agencies[&part.key.responsible_ru];
             let route = routes::route(
                 &part.key,
@@ -321,9 +346,68 @@ impl Builder<'_> {
             self.trip_keys(path, handle, number);
             trips.push((handle, part));
         }
+        self.ids_days(path, &memberships, &trips);
         notes.publish(path, &trips, &mut self.timetable, policy);
         notes::request_stops(path, &trips, &mut self.timetable, policy);
         transfers::in_path(pa, &trips, &mut self.timetable, diagnostics);
+    }
+
+    /// R119, R120: the days on which some memberships do not hold, per set of those.
+    fn ids_days(
+        &mut self,
+        path: &Path,
+        memberships: &[notes::Membership<'_>],
+        trips: &[(TripId, &Part)],
+    ) {
+        if memberships.iter().all(|m| m.days.is_none()) {
+            return;
+        }
+        let mut by_off: BTreeMap<Vec<usize>, jr_model::DateSet> = BTreeMap::new();
+        for day in path.dates.iter() {
+            let off: Vec<usize> = memberships
+                .iter()
+                .enumerate()
+                .filter(|(_, m)| m.days.is_some_and(|days| !days.contains(day)))
+                .map(|(index, _)| index)
+                .collect();
+            by_off.entry(off).or_default().insert(day);
+        }
+        let full = by_off.remove(&Vec::new()).unwrap_or_default();
+        if by_off.is_empty() {
+            return;
+        }
+        let all = notes::zones(path, memberships, |_| true);
+        for &(trip, part) in trips {
+            let id = self.timetable.trips[trip].id.clone();
+            let variants = by_off
+                .iter()
+                .map(|(off, days)| {
+                    let holding = notes::zones(path, memberships, |index| !off.contains(&index));
+                    let zones = part
+                        .calls
+                        .iter()
+                        .filter(|call| all.get(&call.index) != holding.get(&call.index))
+                        .map(|call| {
+                            let zones: Box<[Zone]> =
+                                holding.get(&call.index).cloned().unwrap_or_default().into();
+                            (call.sequence() as i32, zones)
+                        })
+                        .collect();
+                    let names: Vec<&str> =
+                        off.iter().map(|&index| memberships[index].value).collect();
+                    ids_days::Variant {
+                        id: czptt::ids_variant(&id, &names),
+                        days: *days,
+                        zones,
+                    }
+                })
+                .collect();
+            self.ids_days.trips.push(ids_days::TripDays {
+                trip,
+                full,
+                variants,
+            });
+        }
     }
 
     fn running_window(&self, dates: &jr_model::DateSet) -> Option<(Date, Date)> {

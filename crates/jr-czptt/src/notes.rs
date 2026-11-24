@@ -16,7 +16,7 @@ use crate::policy::Policy;
 use resolve::{End, resolve};
 
 pub(crate) use resolve::R071;
-pub(crate) use zones::{R085, R086, zones};
+pub(crate) use zones::{Membership, R085, R086, R119, memberships, zones};
 
 /// GTFS trip flags are conservative: a claim counts only if a central note makes it for the
 /// whole part on every running day; contradictory bicycle claims stay unknown.

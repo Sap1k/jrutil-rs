@@ -226,6 +226,11 @@ pub fn czptt(spec: &CzpttSpec, options: &RunOptions) -> Result<(), BuildError> {
         &mut diagnostics,
     )?;
     let mut timetable = compiled.timetable;
+    // CZPTT-R120: the days on which a train's IDS zones differ are a trip of their own.
+    if !compiled.ids_days.is_empty() {
+        let edits = jr_czptt::ids_days::edits(&timetable, &compiled.ids_days);
+        pass(&mut timetable, edits, &precedence, &mut diagnostics)?;
+    }
     stages.done("compile");
 
     let (edits, coordinates) = rail_coordinates::rail_coordinates(

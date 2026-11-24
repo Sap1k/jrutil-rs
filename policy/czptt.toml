@@ -182,6 +182,8 @@ kinds = ["bicycle_transport_prohibited"]
 # CZPTT-R085, R086: IDS zone memberships.
 [zones]
 parameter = "CZIPTS"
+# CZPTT-R119: a CZIPTS value's sixth field names one of these (`id|from|to|bitmap|`).
+calendar_parameter = "CZCalendarIPTS"
 # The catalogue note names a fare band as `… <word> <band>` (case-insensitive).
 fare_band_word = "pásmo"
 system_separator = "_"

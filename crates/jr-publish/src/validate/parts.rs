@@ -1,6 +1,8 @@
 //! Trip parts of one run (a CZPTT path): consecutive parts share exactly one boundary call,
 //! the last of one part and the first of the next, with the same sequence, location and
-//! times; a bus part carries no non-passenger calls.
+//! times; a bus part carries no non-passenger calls. A part may be published as several trips
+//! running on different days (CZPTT-R120: its IDS zones differ by day); each of them must then
+//! share its boundary call with a trip of the previous part.
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -150,13 +152,25 @@ fn check_parts(findings: &mut Findings, tables: &Tables) -> Option<()> {
     let mut example: Option<&str> = None;
     for ordered in runs.values_mut() {
         ordered.sort_unstable();
-        for pair in ordered.windows(2) {
-            let (previous, next) = (&parts[pair[0].1], &parts[pair[1].1]);
-            let shared =
-                matches!((previous.last, next.first), (Some(l), Some(f)) if same_call(l, f));
+        for &(number, trip) in ordered.iter() {
+            let Some(previous_number) = ordered
+                .iter()
+                .map(|&(n, _)| n)
+                .filter(|&n| n < number)
+                .max()
+            else {
+                continue;
+            };
+            let next = &parts[trip];
+            let shared = ordered
+                .iter()
+                .filter(|&&(n, _)| n == previous_number)
+                .any(|&(_, previous)| {
+                    matches!((parts[previous].last, next.first), (Some(l), Some(f)) if same_call(l, f))
+                });
             if !shared {
                 broken += 1;
-                example = Some(example.map_or(pair[1].1, |current| current.min(pair[1].1)));
+                example = Some(example.map_or(trip, |current| current.min(trip)));
             }
         }
     }

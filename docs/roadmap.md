@@ -25,7 +25,7 @@ where a phase says so.
 | jdf-merge | B2, B3 (B4 follows) | Fix the bugs: a location-less alias no longer bypasses the distance gates, and suffix retrieval works both ways. Batch-name order stays the stated rule; there is no order-free redesign. |
 | posts | B5, B6, B7, Q3, Q11, Q14 | Fix the road graph and retrain. Link roads are routable. A barrier blocks by type: `lift_gate`, `gate` and `swing_gate` pass for bus/psv, while `bollard`, `block`, `kerb` and the other types block unless the node grants `bus`/`psv`. The bus/psv one-way and turn exemptions are read. The training table is produced from Rust, a reviewed list replaces the pack statistic, and the scorer is retrained. |
 | posts | B9, B10, Q6, Q15 | Contract minor: an estimated post has its own coordinate source, and an `Area` decision gets a precision that says it is approximate. The learned scores go to their proper fields. |
-| serving | 1 | A CZPTT train gets a direction derived from the order of its line's stations, so a line's route stops are split by direction. A new rule and a ledger category. |
+| serving | 1 | Done in phase 5 (CZPTT-R121): per route, the train with the most stations is direction 0 and the others follow the order of the stations they share (at least two) with a directed train. Nationally 72,944 of 81,900 trains get a direction; 8,930 share too little with any and keep none. |
 
 ### Clear fixes (architect)
 
@@ -41,8 +41,8 @@ where a phase says so.
 | overlay | B2, Q2 | Thresholds are per source, from the profiles. Zones are scoped to their tariff. |
 | posts | B8 | Lifecycle classes: `proposed` is not eligible, and `current`/`temporary` count as current. |
 | posts | B11, Q5 | An authored post is positioned without depending on unrelated unlabelled calls. |
-| czptt | B17, R085 | CZIPTS zones respect their calendar. |
-| czptt | B27, Q9 | The catalogue version is chosen per date. |
+| czptt | B17, R085 | Done in phase 5 (CZPTT-R119, R120): a membership with a `CZCalendarIPTS` holds on its days only; the days on which some membership does not hold are split off as their own trip (`…:ids:<hash>`) with the zones that hold. |
+| czptt | B27, Q9 | Phase 5 measured it: no KADR line or IDS entry changes version inside GVD 2026, so the version stays chosen at the first date (splitting by date would change nothing). CZPTT-R122 reports a path the day a version boundary falls inside it. |
 
 ### Staying limitations
 
@@ -80,7 +80,11 @@ One phase at a time; each phase lands as one or two coarse commits.
    nationally), 232 agencies get their information phone.
 4. **Overlay, step two.** One-to-one assignment, per-source thresholds, zones scoped to their
    tariff (overlay B6). Judged by the drop in `overlay_fact_conflict` events on the golden slice.
-5. **Rail.** CZIPTS calendars, the catalogue version per date, the direction of each train.
+5. **Rail.** Done (2026-11-25). National rail check against phase 3: 26 trip parts split off
+   by IDS calendar (372 calls, their notes, keys and transfers copied), 72,944 trains get a
+   direction and route stops are listed per direction, otherwise identical. The package
+   validator now accepts a part published as several trips on different days (a part must
+   share its boundary call with some trip of the previous part).
 6. **Posts.** Lifecycle classes (B8), authored positions (B11), the graph fixes, a recapture, the training table from Rust, the reviewed list, the
    retrained scorer, and the contract minor for estimated and area posts. The bar is labelled
    accuracy no worse than now. One national comparison with the user.

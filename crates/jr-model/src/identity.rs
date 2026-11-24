@@ -246,6 +246,19 @@ pub mod czptt {
         PublicId::build("czptt:trip", &[path, &part.to_string()])
     }
 
+    /// The days of a part on which some of its IDS memberships do not hold (`CZCalendarIPTS`),
+    /// named after those memberships as the source writes them (eight hex characters of their
+    /// SHA-256), so the name does not move with the dates.
+    pub fn ids_variant(trip: &PublicId, memberships_off: &[&str]) -> PublicId {
+        use sha2::{Digest, Sha256};
+        let digest = Sha256::digest(memberships_off.join("\u{1f}").as_bytes());
+        let hex: String = digest[..4]
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        trip.child(&["ids", &hex])
+    }
+
     /// `mode_block` is set when the path alternates between rail and replacement bus.
     pub fn block(path: &str, mode_block: Option<u16>) -> PublicId {
         match mode_block {

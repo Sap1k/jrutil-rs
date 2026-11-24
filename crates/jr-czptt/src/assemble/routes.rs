@@ -21,6 +21,42 @@ pub(crate) const R056: Rule = Rule {
     summary: "A part's catalogue line is the version valid at the path's first date, latest start first",
 };
 
+/// A part whose catalogue line has another version (or none) on the path's last running day
+/// than on its first is diagnosed: R056 takes the first day's version for every day. No line or
+/// IDS entry of the catalogue changes version inside GVD 2026 (measured 2026-11-25), so the
+/// version is not chosen per day; this makes the day it matters visible (B27,
+/// `docs/roadmap.md`).
+pub(crate) const R122: Rule = Rule {
+    id: "CZPTT-R122",
+    summary: "A path whose catalogue line changes version within its days is diagnosed",
+};
+
+/// R122.
+pub(crate) fn check_line_version(
+    pa: &str,
+    line: Option<&str>,
+    first: Date,
+    last: Date,
+    catalog: &Catalog,
+    diagnostics: &mut Diagnostics,
+) {
+    let Some(code) = line else { return };
+    let at = |date| line_at(catalog, code, date).map(|line| (line.valid_from, line.valid_to));
+    if at(first) != at(last) {
+        diagnostics.push(
+            Diagnostic::new(
+                "czptt_line_version_changes",
+                Severity::Warning,
+                pa,
+                format!(
+                    "line {code} has another catalogue version on {last} than on {first}: the                      first day's is used"
+                ),
+            )
+            .rule(R122),
+        );
+    }
+}
+
 /// The passenger-facing name of a line is its KADR mark; a train without one is known by its
 /// category and number.
 pub(crate) const R058: Rule = Rule {
