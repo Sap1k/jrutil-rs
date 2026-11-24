@@ -125,8 +125,8 @@ pub const R035: Rule = Rule {
     summary: "trip matrices: one representative trip per direction and kilometre pattern",
 };
 
-/// A town written `Praha [AB]` is the town `Praha` in okres `AB` of the home country (not on
-/// the MHD path, B4).
+/// A town written `Praha [AB]` is the town `Praha` in okres `AB` of the home country, on the
+/// MHD path too (B4 fixed, `docs/roadmap.md`).
 ///
 /// Some CIS exports append the okres code to the town name.
 pub const R036: Rule = Rule {
@@ -135,7 +135,9 @@ pub const R036: Rule = Rule {
 };
 
 /// A town-only name with two commas is the triple; else an empty district takes the nearby
-/// place (B5 kept: the result is published, verdict Q1).
+/// place, on the MHD path too (B4 fixed). The moved form is what is published and what the
+/// registry holds (B5 decided: name identity ignores which column a part is in, so keeping it
+/// moves no stop, and the published name never shows an empty part; `docs/roadmap.md`).
 ///
 /// CIS names are inconsistent about which column holds what.
 pub const R037: Rule = Rule {

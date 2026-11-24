@@ -710,14 +710,21 @@ fn jdf_r060_mhd_named_stops_are_renamed_with_their_town() {
         row("Praha,,Florenc", 50.09, 14.44, Some("AA"), Some("CZ")),
         row("Praha,,Muzeum", 50.08, 14.43, Some("AA"), Some("CZ")),
         row("Praha,,Anděl", 50.07, 14.40, Some("AA"), Some("CZ")),
+        row("Praha,,Karlovo nám.", 50.075, 14.42, Some("AA"), Some("CZ")),
     ]);
     let stops = vec![
         stop(1, "Florenc", None, None),
         stop(2, "Muzeum", None, None),
         stop(3, "Anděl", None, None),
+        // Written in full: not renamed, normalised as on the plain path (B4).
+        stop(4, "Praha", None, Some("Karlovo nám.")),
     ];
     let (fixed, diagnostics) = fix(
-        batch("b", stops, &[(1, vec![at(1, 0), at(2, 3), at(3, 6)])]),
+        batch(
+            "b",
+            stops,
+            &[(1, vec![at(1, 0), at(2, 3), at(4, 5), at(3, 6)])],
+        ),
         &evidence,
     );
     let fixed = fixed.unwrap();
@@ -728,6 +735,15 @@ fn jdf_r060_mhd_named_stops_are_renamed_with_their_town() {
         ("Praha", Some("Florenc"))
     );
     assert!(first.location.as_ref().unwrap().origin.is_precise());
+    let full = stop_at(&fixed, 4);
+    assert_eq!(
+        (
+            &*full.town,
+            full.district.as_deref(),
+            full.nearby_place.as_deref()
+        ),
+        ("Praha", Some("Karlovo nám."), None)
+    );
 }
 
 #[test]

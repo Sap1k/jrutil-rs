@@ -80,8 +80,8 @@ fn r415_r418_r433_r469_ids_names_and_unspecified_points() {
     let (assembled, _) = assemble(vec![simple(1, &[])]);
     let t = &assembled.timetable;
     assert_eq!(trip_ids(t), ["jdf:trip:100001:251214:1"]);
-    assert_eq!(sorted_names(t), ["Alfa,,náves", "Beta,střed"]);
-    let place = place(t, "Alfa,,náves");
+    assert_eq!(sorted_names(t), ["Alfa,náves", "Beta,střed"]);
+    let place = place(t, "Alfa,náves");
     assert_eq!(
         (
             place.municipality.as_deref(),
@@ -105,7 +105,7 @@ fn r423_r441_unserved_calls_are_not_published_nor_their_stops() {
     set_call(&mut batch, 1, None, Some(TimeCell::OtherRoute));
     let (assembled, _) = assemble(vec![batch]);
     let t = &assembled.timetable;
-    assert_eq!(sorted_names(t), ["Alfa,,náves", "Gama"]);
+    assert_eq!(sorted_names(t), ["Alfa,náves", "Gama"]);
     let sequences: Vec<i32> = t.trips.rows()[0].calls.iter().map(|c| c.sequence).collect();
     assert_eq!(sequences, [0, 2]);
 }
@@ -133,7 +133,7 @@ fn r434_r443_even_trips_run_in_reverse() {
         .iter()
         .map(|c| &*assembled.timetable.places[c.place].name)
         .collect();
-    assert_eq!(places, ["Beta,střed", "Alfa,,náves"]);
+    assert_eq!(places, ["Beta,střed", "Alfa,náves"]);
     assert_eq!(trip.calls[0].sequence, 0);
 }
 

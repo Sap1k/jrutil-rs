@@ -313,7 +313,7 @@ fn r226_the_published_spelling_does_not_depend_on_batch_order() {
 }
 
 #[test]
-fn r231_a_precise_position_replaces_an_estimate_and_far_positions_are_diagnosed() {
+fn r231_r220_a_precise_position_replaces_an_estimate_and_a_far_namesake_is_another_stop() {
     let name = || stop("Testov", Some("náves"), None);
     let (merged, diagnostics) = merge_stops(vec![
         stops_batch("a", vec![estimated(name(), 50.0, 14.0)]),
@@ -321,13 +321,17 @@ fn r231_a_precise_position_replaces_an_estimate_and_far_positions_are_diagnosed(
             "b",
             vec![at(stop("Testov", Some("náves."), None), 50.0002, 14.0)],
         ),
-        // Matches a's alias, which has no precise position, at any distance (R220).
+        // a's alias has no precise position, but the stop has b's: 55 km is too far (B2).
         stops_batch("d", vec![at(name(), 50.5, 14.0)]),
     ]);
-    assert_eq!(merged.stops.len(), 1);
-    let location = merged.stops[0].location.as_ref().expect("located");
-    assert_eq!(location.coord.lat, 50.0002);
-    assert_eq!(count(&diagnostics, "jdf_stop_location_conflict"), 1);
+    assert_eq!(merged.stops.len(), 2);
+    let near = merged
+        .stops
+        .iter()
+        .find(|stop| stop.location.as_ref().unwrap().coord.lat < 50.1)
+        .unwrap();
+    assert_eq!(near.location.as_ref().unwrap().coord.lat, 50.0002);
+    assert_eq!(count(&diagnostics, "jdf_stop_location_conflict"), 0);
 }
 
 #[test]
@@ -353,18 +357,31 @@ fn r235_merges_are_counted_and_new_stops_diagnosed() {
 }
 
 #[test]
-fn r217_a_one_component_spelling_finds_a_longer_one_only_by_position() {
-    // The index asymmetry of R219 is ported (verdict Q5).
+fn r217_r219_suffix_matching_does_not_depend_on_batch_order() {
+    // F# found the longer spelling from the shorter only by position (B3).
     let long = || stop("Ludmírov", Some("Dětkovice"), None);
     let short = || stop("Dětkovice", None, None);
-    let (unlocated, _) = merge_stops(vec![
-        stops_batch("a", vec![long()]),
-        stops_batch("b", vec![short()]),
-    ]);
-    assert_eq!(unlocated.stops.len(), 2);
+    for (first, second) in [(long(), short()), (short(), long())] {
+        let (unlocated, _) = merge_stops(vec![
+            stops_batch("a", vec![first]),
+            stops_batch("b", vec![second]),
+        ]);
+        assert_eq!(unlocated.stops.len(), 1);
+    }
     let (located, _) = merge_stops(vec![
         stops_batch("a", vec![at(long(), 49.7, 16.95)]),
         stops_batch("b", vec![at(short(), 49.7001, 16.95)]),
     ]);
     assert_eq!(located.stops.len(), 1);
+    // Precise and far apart: two stops, whichever comes first.
+    for (first, second) in [
+        (at(long(), 49.7, 16.95), at(short(), 49.8, 16.95)),
+        (at(short(), 49.8, 16.95), at(long(), 49.7, 16.95)),
+    ] {
+        let (far, _) = merge_stops(vec![
+            stops_batch("a", vec![first]),
+            stops_batch("b", vec![second]),
+        ]);
+        assert_eq!(far.stops.len(), 2);
+    }
 }

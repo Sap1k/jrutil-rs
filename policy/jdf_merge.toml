@@ -7,8 +7,6 @@
 match_distance_m = 75.0
 # JDF-R217: the spatial index's longitude cells are wide enough for this latitude and below.
 grid_max_latitude = 70.0
-# JDF-R217, R219: an alias's suffixes are indexed from this many components.
-min_suffix_components = 2
 # JDF-R221: a fuzzy candidate needs this many tokens on both sides and these similarities.
 fuzzy_min_tokens = 2
 fuzzy_min_levenshtein = 0.90

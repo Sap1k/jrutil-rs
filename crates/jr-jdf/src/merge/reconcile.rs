@@ -20,9 +20,10 @@ pub const R216: Rule = Rule {
 };
 
 /// Candidates are the aliases whose identity equals the incoming one or one of its proper
-/// suffixes, whose indexed suffixes (two components or more) equal it, and, for a precisely
-/// located stop, the aliases in the adjacent cells of a grid as fine as the match distance. So a
-/// one-component spelling finds a longer one only by position (the asymmetry is ported, Q5).
+/// suffixes, whose proper suffixes equal it, and, for a precisely located stop, the aliases in
+/// the adjacent cells of a grid as fine as the match distance. Retrieval is symmetric: a
+/// one-component spelling finds a longer one ending in it, as the longer finds the shorter
+/// (B3 fixed, `docs/roadmap.md`).
 pub const R217: Rule = Rule {
     id: "JDF-R217",
     summary: "Candidates come from the identity and suffix indexes and the adjacent grid cells",
@@ -42,12 +43,15 @@ pub const R219: Rule = Rule {
     summary: "One component list ending the other is a suffix match",
 };
 
-/// Same-named stops farther apart than the match distance are different stops, when both
-/// positions are precise; without two precise positions an exact or suffix match holds at any
-/// distance (B2, ported). A registry row's position is its reference.
+/// Same-named stops farther apart than the match distance are different stops: a precisely
+/// located spelling matches a stop by exact or suffix name only within the match distance of
+/// the nearest precise position the stop's aliases have, whichever alias the name retrieved (B2
+/// fixed: an alias without a precise position no longer carries the match to any distance).
+/// Without precise positions on both sides an exact or suffix match holds at any distance. A
+/// registry row's position is its reference.
 pub const R220: Rule = Rule {
     id: "JDF-R220",
-    summary: "Exact and suffix matches of two precise positions need the match distance",
+    summary: "Exact and suffix matches need the match distance to the stop's nearest precise position",
 };
 
 /// Minor spelling differences (`stare`/`staré`) of two precisely located stops within the
@@ -171,6 +175,8 @@ pub(crate) struct Reconciler {
     exact: HashMap<String, Vec<usize>>,
     suffix: HashMap<String, Vec<usize>>,
     grid: HashMap<(i64, i64), Vec<usize>>,
+    /// R220: per stop number, the precise positions of its aliases.
+    precise: HashMap<u64, Vec<Coord>>,
     cell_lat: f64,
     cell_lon: f64,
     policy: StopsPolicy,
@@ -190,6 +196,7 @@ impl Reconciler {
             exact: HashMap::new(),
             suffix: HashMap::new(),
             grid: HashMap::new(),
+            precise: HashMap::new(),
             cell_lat,
             cell_lon,
             policy: policy.clone(),
@@ -209,9 +216,7 @@ impl Reconciler {
         let mut ids: Vec<usize> = Vec::new();
         let full = name.key();
         ids.extend(self.exact.get(&full).into_iter().flatten());
-        if name.components.len() >= 2 {
-            ids.extend(self.suffix.get(&full).into_iter().flatten());
-        }
+        ids.extend(self.suffix.get(&full).into_iter().flatten());
         for offset in 1..name.components.len() {
             ids.extend(
                 self.exact
@@ -247,6 +252,24 @@ impl Reconciler {
                 }
                 None => best.push(candidate),
             }
+        }
+        // R220: a precise spelling is measured against the stop, not only the alias it found.
+        if let Some(coord) = precise {
+            best.retain_mut(|candidate| {
+                if candidate.kind == MatchKind::Fuzzy {
+                    return true;
+                }
+                let Some(nearest) = self.precise.get(&candidate.number).and_then(|positions| {
+                    positions
+                        .iter()
+                        .map(|&at| distance_m(coord, at))
+                        .min_by(f64::total_cmp)
+                }) else {
+                    return true;
+                };
+                candidate.distance = Some(nearest);
+                nearest <= self.policy.match_distance_m
+            });
         }
         let Some(strongest) = best.iter().map(|c| c.kind).min() else {
             return Found::Unmatched(Vec::new());
@@ -357,6 +380,11 @@ impl Reconciler {
                     insert(&mut self.grid, new, id);
                 }
             }
+            if let Some((coord, true)) = updated
+                && existing.location != updated
+            {
+                self.precise.entry(number).or_default().push(coord);
+            }
             let alias = &mut self.aliases[id];
             if alias.okres.is_none() {
                 alias.okres = locality.okres.map(Box::from);
@@ -371,12 +399,11 @@ impl Reconciler {
         let id = self.aliases.len();
         let cell = location.and_then(|(coord, precise)| precise.then(|| self.cell(coord)));
         insert(&mut self.exact, name.key(), id);
-        let minimum = self.policy.min_suffix_components;
         for offset in 1..name.components.len() {
-            let suffix = &name.components[offset..];
-            if suffix.len() >= minimum {
-                insert(&mut self.suffix, key(suffix), id);
-            }
+            insert(&mut self.suffix, key(&name.components[offset..]), id);
+        }
+        if let Some((coord, true)) = location {
+            self.precise.entry(number).or_default().push(coord);
         }
         if let Some(cell) = cell {
             insert(&mut self.grid, cell, id);

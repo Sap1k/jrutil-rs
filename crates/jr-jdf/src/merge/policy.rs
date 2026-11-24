@@ -29,7 +29,6 @@ impl Policy {
 pub struct StopsPolicy {
     pub match_distance_m: f64,
     pub grid_max_latitude: f64,
-    pub min_suffix_components: usize,
     pub fuzzy_min_tokens: usize,
     pub fuzzy_min_levenshtein: f64,
     pub fuzzy_min_token_dice: f64,

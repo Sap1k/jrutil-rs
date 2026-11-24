@@ -204,17 +204,27 @@ pub fn fix(
         None => (plain, plain_counters),
         Some((town, support)) => {
             let towns = mhd::town_list(town, policy);
+            // R059 renames the raw town-only names; every other name is the normalised one, and a
+            // renamed one is normalised the same way (R036, R037: B4 fixed).
             let renamed: Vec<WorkStop> = raw
                 .iter()
-                .map(|stop| {
-                    mhd::rename(
-                        stop,
+                .zip(&normalised)
+                .map(|(stop, normalised)| {
+                    if !stop.town_only() {
+                        return normalised.clone();
+                    }
+                    let mut bracketed = stop.clone();
+                    names::okres_from_name(&mut bracketed, home);
+                    let mut renamed = mhd::rename(
+                        &bracketed,
                         &towns,
                         evidence,
                         policy,
                         &batch_name,
                         report.diagnostics,
-                    )
+                    );
+                    names::district_from_nearby(&mut renamed);
+                    renamed
                 })
                 .collect();
             let (mhd_set, mhd_counters) =

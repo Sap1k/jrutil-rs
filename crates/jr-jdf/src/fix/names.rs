@@ -82,13 +82,17 @@ pub(crate) fn normalise_name(stop: &mut WorkStop) -> Option<u8> {
         stop.nearby = nearby;
         return Some(1);
     }
-    if stop.district.is_none() {
-        let moved = stop.nearby.take();
-        let applied = moved.is_some();
-        stop.district = moved;
-        return applied.then_some(2);
+    district_from_nearby(stop).then_some(2)
+}
+
+/// R037's second branch: a name without a district has its nearby place as the district, on
+/// the plain and the MHD path alike, so one stop has one structure whatever its batch.
+pub(crate) fn district_from_nearby(stop: &mut WorkStop) -> bool {
+    if stop.district.is_some() || stop.nearby.is_none() {
+        return false;
     }
-    None
+    stop.district = stop.nearby.take();
+    true
 }
 
 /// R038: on the non-MHD path a town-only name with one comma is town and district.

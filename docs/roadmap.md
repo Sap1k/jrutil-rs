@@ -17,7 +17,7 @@ where a phase says so.
 | Inventory | Items | Decision |
 |---|---|---|
 | jdf-convert | B1, B2, B23, Q3 | Confirm the JDF meaning of a route-stop `x` and of a trip's `T`/`!` against the specification first. Then they make the calls request stops. Precedence is most specific first: call, then route stop, then stop. |
-| jdf-read | B4, B5 | One name normalisation for MHD and non-MHD batches. The structured fields (`district`, `nearby_place`) keep the source's meaning. A passenger-facing name joins only the non-empty parts, so it never contains `,,`. The registry rows are migrated in the same change (jrunify-ext-geodata). |
+| jdf-read | B4, B5 | One name normalisation for MHD and non-MHD batches, and a passenger-facing name joins only the stated parts, so it never contains `,,` (JDF-R036, R037, R415). Revised in phase 2: the structured fields keep the moved form (a nearby place without a district is published as the district), as the registry holds it. The registry cannot be migrated back: a row such as `Velký Újezd,rozc.Výkleky,,` may be a real district or a moved nearby place, and nothing records which. No consumer reads the two fields apart, and stop identity, the provisional hash and registry matching ignore which column a part is in, so keeping the form moves no stop. |
 | jdf-convert | B4, Q11 | Typed `Caskody` rows are published as calendar designations. |
 | jdf-convert | B21, Q15 | The alternate operator (`Altdop`) is published on the dates it runs the trip. This needs a model field or a new edit kind, so it is raised as an architecture decision in that phase. |
 | jdf-convert | B3, Q12 | `Mistenky` rows for trip `0` become route notes. |
@@ -69,9 +69,9 @@ One phase at a time; each phase lands as one or two coarse commits.
    (jdf-read B9); the placeholder validator (jdf-read B17). Overlay B6 moved to phase 4, where
    zones get their tariff scope, and posts B8 and B11 to phase 6, where they can be judged by
    labelled accuracy with the recapture.
-2. **Stops.** jdf-merge B2 and B3, the consistent name structure without `,,`, and the registry
-   migration, all together because each of them moves stop identities. The check: registry IDs
-   against the last release, with no located stop moving more than 75 m.
+2. **Stops.** jdf-merge B2 and B3 and the consistent name structure without `,,` (no registry
+   migration: see the B4/B5 row). The check: registry IDs against the last release, with no
+   located stop moving more than 75 m.
 3. **JDF semantics.** The specification check, then request stops from route stops and trips,
    `Caskody` designations, `Altdop` per date, route reservation notes and the information phone.
    A contract minor where needed, landing with Oběhy's matching `static_build.py` and API

@@ -14,9 +14,10 @@ use super::calls::{Plans, Point};
 use crate::fixed::Origin;
 use crate::merge::{Merged, Spelling};
 
-/// One stop place per merged stop, `jdf:stop:<number>`, named as IDOS shows it: `town`,
-/// `town,district`, `town,,nearby place` or `town,district,nearby place`; the name parts,
-/// okres and country as published stay separate fields.
+/// One stop place per merged stop, `jdf:stop:<number>`, named by its stated parts joined with
+/// commas: `town`, `town,district`, `town,district,nearby place`, never with an empty part
+/// (IDOS writes `town,,nearby place`; passengers should not see that). The name parts, okres and
+/// country as published stay separate fields.
 pub const R415: Rule = Rule {
     id: "JDF-R415",
     summary: "Stop places are named town[,district][,,nearby place] with the parts kept",
@@ -94,12 +95,11 @@ fn stated(part: &Option<Box<str>>) -> Option<Box<str>> {
 
 /// R415's name.
 pub(crate) fn stop_name(name: &Spelling) -> String {
-    match (name.district.as_deref(), name.nearby_place.as_deref()) {
-        (None, None) => name.town.to_string(),
-        (Some(d), None) => format!("{},{d}", name.town),
-        (None, Some(n)) => format!("{},,{n}", name.town),
-        (Some(d), Some(n)) => format!("{},{d},{n}", name.town),
-    }
+    std::iter::once(Some(name.town.clone()))
+        .chain([stated(&name.district), stated(&name.nearby_place)])
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 pub(crate) fn build(
