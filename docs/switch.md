@@ -21,10 +21,11 @@ precondition; one national comparison per package was the check.
   share a machine, so the projection's `sin`, `cos`, `atan2` come from the same `libm`.
 - `manifest.json` names the compiler (`jrutil-rs`, the version or commit) and each source by ID
   and SHA-256; retrieval times, URLs and licences stay in Oběhy's `release.json`.
-- Still outside this repository: the gazetteers (`cz_regions.json.gz`, `cz_towns.json.gz`,
-  `eur_towns_countries.csv`) are read from the F# JrUtil checkout (`[paths] gazetteer_dir`),
-  and the route-shapes companion is a release of that repository. Both should move (the
-  gazetteers to `jrunify-ext-geodata`) before Oběhy drops the `converters/jrutil` submodule.
+- The gazetteers (`cz_regions.json.gz`, `cz_towns.json.gz`, `eur_towns_countries.csv`) are in
+  `jrunify-ext-geodata/gazetteer` (moved from the F# checkout's `jrutil/data` on 2026-11-24,
+  byte-identical); Oběhy's `[paths] gazetteer_dir` defaults there. The route-shapes companion is
+  still a release of the F# JrUtil repository, the last thing Oběhy needs from it before the
+  `converters/jrutil` submodule can go.
 
 ## 1. The national comparison
 
@@ -73,7 +74,7 @@ occurrences (CZPTT-R071), and route shapes.
 # <run>/rs-jdf.toml
 [jdf]
 catalogues = "<geodata>/other"
-gazetteer = "<jrutil>/jrutil/data"
+gazetteer = "<geodata>/gazetteer"
 osm = "<workdir>/osm/jdf-post-candidates.osm.pbf"
 registry = "<geodata>/registry"
 route_rules = "<geodata>/routes"

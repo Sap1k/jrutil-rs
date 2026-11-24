@@ -70,8 +70,8 @@ The slice is the one JrUtil's `scripts/golden/prepare.py` selected for the overl
 (`<root>/jdf/inputs`, a link to `work/overlay-golden/inputs`): 2,487 JDF batches (2,229 of
 version 1.11, 256 of 1.10, 2 of 1.8), the stop catalogues, the OSM stop extract, the reviewed
 route rules and the PID and IDS JMK snapshots. `<root>/jdf/build.toml` is the build
-specification; the gazetteers come from the JrUtil checkout and the stop registry from the
-`jrunify-ext-geodata` checkout.
+specification; the gazetteers and the stop registry come from the `jrunify-ext-geodata`
+checkout.
 
 The F# reference is `<root>/jdf/out/fs-ref`: `fix-jdf`, then `merge-jdf --gvd-year=2026
 --reference-date=2026-11-21 --stop-registry=…`, then `jdf-to-bundle` without post estimation
