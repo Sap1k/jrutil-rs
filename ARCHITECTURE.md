@@ -58,6 +58,9 @@ coordinates).
 | `jr-publish` | serving relations, GTFS projection, manifest, diagnostics, `validate`, `compare` | yes |
 | `jrutil` | CLI, build spec, pipeline order, cache files, progress, the shapes companion process | yes |
 
+Outside the workspace, `route-shapes/` is the companion itself: C++, because osr (MOTIS's router)
+is. `jrutil` runs it as a process and `jr_enrich::shapes` reads its answer.
+
 ## The model
 
 `jr_model::Timetable` is one feed's timetable in dense tables addressed by typed handles.

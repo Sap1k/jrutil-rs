@@ -39,6 +39,8 @@ The build specification is TOML with a `[czptt]` and/or a `[jdf]` section
 - `docs/rules/`: every special case the compiler knows, and what became of each F# rule.
 - `docs/golden.md`: the bounded real-data subset, and the national comparisons.
 - `docs/switch.md`: how Oběhy runs the compiler, and what changed when it switched.
+- `route-shapes/`: the route-shapes companion (C++ on MOTIS's osr router), built and released
+  by `.github/workflows/route-shapes.yml`.
 
 ```
 cargo fmt --all --check

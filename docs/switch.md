@@ -23,9 +23,10 @@ precondition; one national comparison per package was the check.
   and SHA-256; retrieval times, URLs and licences stay in Oběhy's `release.json`.
 - The gazetteers (`cz_regions.json.gz`, `cz_towns.json.gz`, `eur_towns_countries.csv`) are in
   `jrunify-ext-geodata/gazetteer` (moved from the F# checkout's `jrutil/data` on 2026-11-24,
-  byte-identical); Oběhy's `[paths] gazetteer_dir` defaults there. The route-shapes companion is
-  still a release of the F# JrUtil repository, the last thing Oběhy needs from it before the
-  `converters/jrutil` submodule can go.
+  byte-identical); Oběhy reads them from its geodata checkout. The route-shapes companion
+  (`route-shapes/`, C++ on osr) moved here from the F# repository the same day; its workflow
+  publishes `route-shapes-<source hash>` releases, and Oběhy's build downloads the one matching
+  its jrutil-rs checkout. Oběhy needs nothing from the F# JrUtil any more.
 
 ## 1. The national comparison
 
