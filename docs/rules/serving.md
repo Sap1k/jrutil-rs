@@ -27,6 +27,9 @@ Conventions used below:
 
 ## Architect's verdicts
 
+**After the switch (2026-11-24):** the limitations and post-switch changes recorded below are
+decided in `docs/roadmap.md`, which takes precedence where the two differ.
+
 **These override the "Proposed verdict" lines below.** Where a rule is not listed, its proposed
 verdict stands. `serving-v5.json` (5.2) is the authoritative contract; `production-v3.json` is
 corrected to say 5.2.

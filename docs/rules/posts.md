@@ -60,6 +60,9 @@ and tests; no count is quoted from real data except the registry file (57,237 `e
 
 ## Architect's verdicts
 
+**After the switch (2026-11-24):** the limitations and post-switch changes recorded below are
+decided in `docs/roadmap.md`, which takes precedence where the two differ.
+
 **These override the "Proposed verdict" lines below.** Where a rule is not listed, its proposed
 verdict stands. Rule IDs in the Rust code are the IDs of this file.
 

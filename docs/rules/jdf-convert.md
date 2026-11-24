@@ -65,6 +65,9 @@ Conventions used below:
 
 ## Architect's verdicts
 
+**After the switch (2026-11-24):** the limitations and post-switch changes recorded below are
+decided in `docs/roadmap.md`, which takes precedence where the two differ.
+
 **These override the "Proposed verdict" lines below.** Where a rule is not listed, its proposed
 verdict stands. Rule IDs in the Rust code are the IDs of this file; the calendar rules are owned
 by `jdf-merge.md` (R255–R268), and R409–R414 here refer to them.

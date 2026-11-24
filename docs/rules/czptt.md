@@ -28,6 +28,9 @@ Conventions used below:
 
 ## Architect's verdicts
 
+**After the switch (2026-11-24):** the limitations and post-switch changes recorded below are
+decided in `docs/roadmap.md`, which takes precedence where the two differ.
+
 **These override the "Proposed verdict" lines below.** Where a rule is not listed here, its
 proposed verdict stands. Rule IDs in the Rust code are the IDs of this file; new rules continue
 from `CZPTT-R116`. Answers that came from data were checked on the golden subset (2,916
