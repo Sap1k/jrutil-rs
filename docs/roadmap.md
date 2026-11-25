@@ -78,16 +78,46 @@ One phase at a time; each phase lands as one or two coarse commits.
    260,654 trips and 4,733,082 calls; 1.97 M calls change boarding (route-stop `x`), 233,890
    notes added (typed `Caskody`), 1,833 trips move to 290 operator routes (no partial split
    nationally), 232 agencies get their information phone.
-4. **Overlay, step two.** One-to-one assignment, per-source thresholds, zones scoped to their
-   tariff (overlay B6). Judged by the drop in `overlay_fact_conflict` events on the golden slice.
+4. **Overlay, step two.** Done (2026-11-25): a first-departure tolerance of 420 s (OVL-R133,
+   measured: accepted bindings fall from ~700 per minute of deviation up to 7 min to under 80
+   at 8 min, beyond is the neighbouring run of a dense line); per date and source each base trip
+   goes to one source trip, best rank first, a loser taking its next-best option (OVL-R134,
+   B1); profiles carry each source's own F# policy, tiers strongest first (OVL-R136, B2: PID
+   loses the merged 25/10 m coordinate-identity tier and the inert stop zones, IDS JMK the inert
+   companion tier); a source's place zones go only to the trips it binds or adds (OVL-R135, B6).
+   Golden slice: `overlay_fact_conflict` 4,269 → 0, 904 source trips once withheld as
+   unrepresented now represented, 1,505 bindings beyond 420 s dropped (their trips added or
+   kept national), IDS JMK zones removed from 247,666 national and PID calls (published per call
+   now: `call_zone` 86 k → 269 k rows). Rank beats revision within a source; a pending trip does
+   not fall back to worse options; claims of two sources on one base trip still go through
+   OVL-R082 (B23 fix kept).
 5. **Rail.** Done (2026-11-25). National rail check against phase 3: 26 trip parts split off
    by IDS calendar (372 calls, their notes, keys and transfers copied), 72,944 trains get a
    direction and route stops are listed per direction, otherwise identical. The package
    validator now accepts a part published as several trips on different days (a part must
    share its boundary call with some trip of the previous part).
-6. **Posts.** Lifecycle classes (B8), authored positions (B11), the graph fixes, a recapture, the training table from Rust, the reviewed list, the
-   retrained scorer, and the contract minor for estimated and area posts. The bar is labelled
-   accuracy no worse than now. One national comparison with the user.
+6. **Posts.** Done (2026-11-25) except the retraining. Lifecycle classes (B8, policy), authored
+   posts positioned by their own contexts (B11), the road graph (B5 link roads, also in Oběhy's
+   routing-base filter `jdf-transit-routing-base-v2`; B6 barriers by kind; B7 bus one-way and
+   turn exemptions), and serving 5.4: estimated posts are sourced `post_estimate`, an
+   Area-only post is `approximate`, learned decisions report their probabilities instead of a
+   margin (B9, B10, B13). Golden slice, labelled accuracy over 1,636,191 calls with a known real
+   post (baseline phase 5 with the old routing base, candidate phase 6 with the new one):
+   correct 72.43 % → 73.51 % (+17,734 calls), wrong 3.15 % → 3.19 %, no estimate 20.30 % →
+   19.19 %; the wrong share of estimated calls stays 3.95 %.
+
+   **Not done: retraining.** The scorer's training chain (`jrutil/scripts/post-scorer`) still
+   runs on F# tools: regional training captures with the region box and the regional catalogues
+   excluded (POST-R005, R047, not ported), the context-call export, the evaluator feature export
+   (`jdf-export-post-features`) and the overlay's call traces (the Rust overlay writes none,
+   verdict Q9). Retraining therefore needs, in order: (a) the training capture options in
+   `jr-posts` capture; (b) a training-table export from the Rust evaluator (the 17 features of
+   `FEATURE_COLUMNS`, context and stop IDs, the baseline decision); (c) labels from an overlay
+   package as `tools/golden/posts_accuracy.py` reads them, per context the majority regional
+   post; (d) `post_scorer.model crossval`/`train` on PID and IDS JMK, evaluated on held-out
+   stops and on Ústecký kraj; (e) the reviewed list replacing the pack statistic (Q11) in the
+   same model version; (f) a national comparison before the new `learned-v2.json` ships. The
+   graph fixes already clear the accuracy bar with the current model, so nothing waits on it.
 7. *Optional, not scheduled:* M5 (reading the raw OSM snapshot) and M6 (SŽ přípoje XLSX, OSM
    track→platform, foreign rail GTFS).
 

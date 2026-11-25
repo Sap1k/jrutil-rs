@@ -51,9 +51,9 @@ complex_stop_posts = 3
 # POST-R030: an observation is admitted when it lies this close to the stop's precise position.
 max_distance_from_stop_m = 300.0
 # POST-R032: lifecycles (trimmed, lower-cased) that make a route point current, and obsolete
-# (B8 kept: `current`, `temporary` and `proposed` are neither).
-current_lifecycles = ["", "active"]
-obsolete_lifecycles = ["abandoned", "disused", "construction"]
+# (B8 fixed: `current` and `temporary` are current, `proposed` is obsolete).
+current_lifecycles = ["", "active", "current", "temporary"]
+obsolete_lifecycles = ["abandoned", "disused", "construction", "proposed"]
 # POST-R033 (verdict Q7): a stop is estimated only with at least this many route points.
 minimum_route_points = 2
 # POST-R040: the JDF transport mode letters whose trips have contexts (bus, tram, trolleybus).

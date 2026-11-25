@@ -123,8 +123,8 @@ pub struct ContextDecision {
     /// The F# assignment's `score`: the post probability under the learned scorer, else the
     /// family's heuristic score when physical.
     pub score: Option<f64>,
-    /// The F# assignment's `margin`: the area probability under the learned scorer (B10), else
-    /// the family's heuristic margin when physical.
+    /// The family's heuristic margin when physical; none under the learned scorer, whose
+    /// probabilities are in `learned` (B10 fixed).
     pub margin: Option<f64>,
 }
 
@@ -415,10 +415,9 @@ fn evaluate_stop(
                 _ => None,
             };
             let (score, margin) = match learned {
-                Some(Some(decision)) => (
-                    Some(decision.post_probability),
-                    Some(decision.area_probability),
-                ),
+                // The probabilities are reported as such ([`LearnedScores`]); a learned decision
+                // has no margin (B10 fixed).
+                Some(Some(decision)) => (Some(decision.post_probability), None),
                 _ => (
                     heuristic.map(|choice| choice.score),
                     heuristic.map(|choice| choice.margin),
@@ -521,11 +520,7 @@ fn authored_positions(
                 choice.score >= settings.authored_minimum_physical_score
                     && choice.margin >= settings.authored_minimum_physical_margin
             });
-        let range = stops[stop_index].contexts.clone();
-        let published = contexts[range]
-            .iter()
-            .any(|decision| decision.kind.is_located() && decision.hypothesis == Some(candidate));
-        if eligible && published {
+        if eligible {
             let hypothesis = &stops[stop_index].hypotheses[candidate];
             positions.push(AuthoredPosition {
                 stop,

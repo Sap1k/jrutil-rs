@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 
 use jr_formats::geodata::registry::{Post, PostKey, Status};
 use jr_formats::post_evidence::{self, BlockRole};
-use jr_model::timetable::BoardingPointKind;
+use jr_model::timetable::{BoardingPointKind, CoordSource, Precision};
 use jr_model::{Diagnostics, Timetable};
 use world::{World, at, crossing, osm};
 
@@ -251,22 +251,24 @@ fn post_r132_registered_ordinals_are_reused_and_retired_ones_never_issued_again(
 }
 
 #[test]
-fn post_r134_an_estimated_post_carries_the_stops_coordinate_provenance() {
+fn post_r130_r134_an_estimated_post_is_the_estimators_position() {
+    // B13 fixed (verdict Q15 revisited, serving 5.4): no longer the stop's provenance.
     let world = crossing();
     let timetable = world.applied(world.estimate(&common::heuristic(), &[]));
-    let place = &timetable.places[world.places[&2]];
+    let mut estimated = 0;
     for point in timetable.boarding_points.rows() {
         if point.id.as_str().contains(":est:") {
+            estimated += 1;
             assert_eq!(point.kind, BoardingPointKind::Post);
             assert_eq!(point.public_code, None);
             let position = point.position.unwrap();
-            let stop = place.position.unwrap();
             assert_eq!(
                 (position.precision, position.source),
-                (stop.precision, stop.source)
+                (Precision::Estimated, Some(CoordSource::PostEstimate))
             );
         }
     }
+    assert!(estimated > 0);
 }
 
 #[test]

@@ -15,8 +15,9 @@ use super::snap::SnapIndex;
 /// A way is a road when its `highway` is one of the routable classes, it is not closed
 /// (`highway=construction`, or any `construction`, `abandoned`, `disused`, `proposed` key) and
 /// it is not generally blocked (`access`, `vehicle` or `motor_vehicle` = no/private) unless
-/// `bus` or `psv` permits it. Link roads, `track` and `pedestrian` are not routable (B5, kept
-/// until the switch, verdict Q3). Conditional tags are not read.
+/// `bus` or `psv` permits it. Link roads are routable (B5 fixed, `docs/roadmap.md`: a bus
+/// through a junction ramp no longer detours); `track` and `pedestrian` are not. Conditional
+/// tags are not read.
 pub const POST_R011: Rule = Rule {
     id: "POST-R011",
     summary: "a way is a road by highway class, unless closed or blocked without bus permission",
@@ -44,25 +45,28 @@ pub const POST_R014: Rule = Rule {
 };
 
 /// `oneway` yes/true/1 gives forward edges only, -1/reverse backward only, otherwise a
-/// roundabout is forward only; road and tram alike. Bus contraflow (`oneway:bus`) is not read
-/// (B7, kept until the switch).
+/// roundabout is forward only; road and tram alike. A bus exemption (`oneway:bus` or
+/// `oneway:psv` = no) gives both directions: contraflow bus lanes (B7 fixed).
 pub const POST_R015: Rule = Rule {
     id: "POST-R015",
     summary: "one-way ways give edges in one direction",
 };
 
-/// A node with any `barrier` tag blocks every edge from or to it, for road and tram, unless the
-/// node itself has an affirmative `bus` or `psv`. Gates and lift gates block too (B6, kept until
-/// the switch).
+/// A node with a `barrier` tag blocks every edge from or to it, for road and tram, unless the
+/// node itself has an affirmative `bus` or `psv`, or the barrier is of a kind a bus passes
+/// through (a gate, a lift gate at a bus station, a toll booth, a border control) and no access
+/// key (general or transit) closes it (B6 fixed, `docs/roadmap.md`).
 pub const POST_R016: Rule = Rule {
     id: "POST-R016",
     summary: "barrier nodes block edges unless the node permits buses",
 };
 
-/// A relation with a `restriction` tag and members `from` (way), `via` (node in the extract),
-/// `to` (way) restricts turns at the via node: arriving from the from way, an `only_*`
-/// restriction allows only the to way and any other forbids it. Via ways, `restriction:bus`,
-/// `except` are not read (B7). The OSM data says which turns a road vehicle may not make.
+/// A relation with a `restriction` tag (or `restriction:bus`, `restriction:psv`, which take
+/// precedence) and members `from` (way), `via` (node in the extract), `to` (way) restricts
+/// turns at the via node: arriving from the from way, an `only_*` restriction allows only the
+/// to way and any other forbids it. A restriction whose `except` names `bus` or `psv` does not
+/// hold for buses (B7 fixed). Via ways are not read. The OSM data says which turns a road
+/// vehicle may not make.
 pub const POST_R018: Rule = Rule {
     id: "POST-R018",
     summary: "turn restrictions with a via node are honoured",
@@ -138,7 +142,22 @@ impl<'p> GraphBuilder<'p> {
     /// R016.
     fn barrier_blocked(&self, tags: OsmTags<'_>) -> bool {
         let policy = self.policy;
-        tag(tags, &policy.barrier_key).is_some() && !self.transit_permission(tags)
+        let Some(barrier) = tag(tags, &policy.barrier_key) else {
+            return false;
+        };
+        if self.transit_permission(tags) {
+            return false;
+        }
+        let passable = policy
+            .passable_barriers
+            .iter()
+            .any(|kind| **kind == *normalized(barrier));
+        let closed = policy
+            .general_access_keys
+            .iter()
+            .chain(&policy.transit_access_keys)
+            .any(|key| tag_in(tags, key, &policy.negative_access));
+        !passable || closed
     }
 
     fn transit_permission(&self, tags: OsmTags<'_>) -> bool {
@@ -214,7 +233,13 @@ impl<'p> GraphBuilder<'p> {
     /// R015: (forward, backward).
     fn directions(&self, tags: OsmTags<'_>) -> (bool, bool) {
         let policy = self.policy;
-        if tag_in(tags, &policy.oneway_key, &policy.oneway_forward) {
+        if policy
+            .oneway_transit_keys
+            .iter()
+            .any(|key| tag_in(tags, key, &policy.oneway_exempt))
+        {
+            (true, true)
+        } else if tag_in(tags, &policy.oneway_key, &policy.oneway_forward) {
             (true, false)
         } else if tag_in(tags, &policy.oneway_key, &policy.oneway_backward) {
             (false, true)
@@ -277,9 +302,26 @@ impl<'p> GraphBuilder<'p> {
     pub fn relation(&mut self, relation: &OsmRelation<'_>) -> Result<(), GraphError> {
         self.freeze()?;
         let policy = self.policy;
-        let Some(value) = tag(relation.tags, &policy.restriction_key) else {
+        let Some(value) = policy
+            .transit_restriction_keys
+            .iter()
+            .chain(std::iter::once(&policy.restriction_key))
+            .find_map(|key| tag(relation.tags, key))
+        else {
             return Ok(());
         };
+        let exempt = tag(relation.tags, &policy.restriction_except_key).is_some_and(|except| {
+            except.split(';').any(|vehicle| {
+                policy
+                    .transit_access_keys
+                    .iter()
+                    .any(|key| **key == *normalized(vehicle))
+            })
+        });
+        if exempt {
+            self.counts.restrictions_ignored += 1;
+            return Ok(());
+        }
         let member = |role: &str| relation.members.iter().find(|m| m.role == role);
         let resolved = match (
             member(&policy.restriction_from_role),

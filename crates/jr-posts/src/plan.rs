@@ -9,7 +9,7 @@ use jr_formats::post_evidence::Pack;
 use jr_formats::post_evidence::ids::sha256_hex;
 use jr_jdf::assemble::PostFacts;
 use jr_model::identity;
-use jr_model::timetable::{BoardingPoint, BoardingPointKind, Position, Precision};
+use jr_model::timetable::{BoardingPoint, BoardingPointKind, CoordSource, Position, Precision};
 use jr_model::{
     BoardingPointId, Coord, Diagnostic, Diagnostics, Edit, EditBuilder, PlaceId, ReportTable, Rule,
     Severity, Timetable,
@@ -23,7 +23,9 @@ mod registry;
 use registry::Location;
 
 /// Each estimated location (a stop and the hypothesis its decided contexts chose) is one
-/// estimated post; Area decisions are published like physical ones (verdict Q6).
+/// estimated post, its position sourced `post_estimate`; a location only `Area` decisions chose
+/// is published with the precision `approximate`, any other `estimated` (B9, B13 fixed,
+/// verdicts Q6, Q15 revisited: `docs/roadmap.md`, serving 5.4).
 ///
 /// The plan only translates decisions; it decides nothing.
 pub const POST_R130: Rule = Rule {
@@ -212,16 +214,19 @@ pub(crate) fn plan(
         order.sort_by(|&a, &b| list[a].1.key.cmp(&list[b].1.key));
         for i in order {
             let (h, location) = &list[i];
+            let area = hypotheses[h];
             let (ordinal, fresh) = ordinals[i];
             let hypothesis = &stop.hypotheses[*h];
             let stop_id = identity::jdf::stop(stop.stop);
-            // B13 kept (verdict Q15): the stop's precision and coordinate source.
+            // R130: the estimator's position, approximate where only Area decisions chose it.
             let position = Position {
                 coord: Coord::new(hypothesis.longitude, hypothesis.latitude),
-                precision: place_row
-                    .and_then(|p| p.position)
-                    .map_or(Precision::Estimated, |p| p.precision),
-                source: place_row.and_then(|p| p.position).and_then(|p| p.source),
+                precision: if area {
+                    Precision::Approximate
+                } else {
+                    Precision::Estimated
+                },
+                source: Some(CoordSource::PostEstimate),
             };
             let point = builder.add_boarding_point(
                 POST_R134,
@@ -315,15 +320,14 @@ pub(crate) fn plan(
         let Some(&point) = authored_points.get(&(place, &*position.authored_post_key)) else {
             continue;
         };
-        let place_position = timetable.places.get(place).and_then(|p| p.position);
         builder.push(
             POST_R137,
             Edit::SetBoardingPointPosition {
                 point,
                 position: Some(Position {
                     coord: Coord::new(position.longitude, position.latitude),
-                    precision: place_position.map_or(Precision::Estimated, |p| p.precision),
-                    source: place_position.and_then(|p| p.source),
+                    precision: Precision::Estimated,
+                    source: Some(CoordSource::PostEstimate),
                 }),
             },
         );

@@ -506,7 +506,7 @@ fn post_r106_a_feature_the_evaluator_does_not_compute_is_refused() {
 }
 
 #[test]
-fn post_r109_an_area_decision_publishes_a_post_with_the_area_probability_as_margin() {
+fn post_r109_an_area_decision_publishes_a_post_and_reports_its_probabilities() {
     let points = vec![
         point("a", 0.0, 0.0, vec![osm(1)]),
         point("b", 0.0, 30.0, vec![osm(2)]),
@@ -525,7 +525,7 @@ fn post_r109_an_area_decision_publishes_a_post_with_the_area_probability_as_marg
     assert!(decision.kind.is_located());
     let scores = decision.learned.expect("learned");
     assert_eq!(decision.score, Some(scores.post_probability));
-    assert_eq!(decision.margin, Some(scores.area_probability));
+    assert_eq!(decision.margin, None, "B10 fixed");
     assert!(scores.post_probability < 0.51 && scores.area_probability > 0.99);
     assert_eq!(decisions.counts.estimated_posts, 1);
 }
@@ -552,7 +552,7 @@ fn post_r121_contexts_choosing_one_hypothesis_publish_one_post() {
 }
 
 #[test]
-fn post_r122_an_authored_post_takes_a_position_only_where_an_unlabelled_call_published_it() {
+fn post_r122_an_authored_post_takes_a_position_by_its_own_contexts() {
     let points = || {
         vec![
             point("a", 0.0, 0.0, vec![osm(1)]),
@@ -582,9 +582,13 @@ fn post_r122_an_authored_post_takes_a_position_only_where_an_unlabelled_call_pub
     );
     let hypothesis = &both.stops[0].hypotheses[position.hypothesis];
     assert_eq!(&*hypothesis.observation_ids[0], "osm:node:1");
-    // B11 (verdict Q5): at a stop where every call is authored nothing is positioned.
+    // B11 fixed: at a stop where every call is authored the post is positioned all the same.
     let only_authored = run(&pack(&[(STOP, points())], vec![authored]), &heuristic());
-    assert!(only_authored.authored_positions.is_empty());
+    assert_eq!(only_authored.authored_positions.len(), 1);
+    assert_eq!(
+        only_authored.authored_positions[0].hypothesis,
+        position.hypothesis
+    );
 }
 
 #[test]

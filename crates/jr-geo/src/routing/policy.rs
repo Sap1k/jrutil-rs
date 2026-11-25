@@ -52,9 +52,17 @@ pub struct GraphPolicy {
     pub oneway_key: Box<str>,
     pub oneway_forward: Vec<Box<str>>,
     pub oneway_backward: Vec<Box<str>>,
+    /// R015: transit one-way keys and the values that exempt buses from a one-way.
+    pub oneway_transit_keys: Vec<Box<str>>,
+    pub oneway_exempt: Vec<Box<str>>,
     pub roundabout: TagValue,
     pub barrier_key: Box<str>,
+    /// R016: barrier values a bus passes through.
+    pub passable_barriers: Vec<Box<str>>,
     pub restriction_key: Box<str>,
+    /// R018: transit restriction keys, before `restriction_key`; the exception key.
+    pub transit_restriction_keys: Vec<Box<str>>,
+    pub restriction_except_key: Box<str>,
     pub restriction_only_prefix: Box<str>,
     pub restriction_from_role: Box<str>,
     pub restriction_via_role: Box<str>,

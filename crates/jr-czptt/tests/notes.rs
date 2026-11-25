@@ -345,7 +345,8 @@ fn r085_r086_a_fare_band_puts_passenger_calls_in_its_zone() {
 fn r119_r120_a_membership_limited_to_some_days_splits_the_trip() {
     // As in the KADR075002 change message: the train runs 14.–19.12., its IDS membership holds
     // 15.–19.12. only.
-    let mut message = support::timetable(vec![stop("57076", "08:00:00"), stop("57016", "08:20:00")]);
+    let mut message =
+        support::timetable(vec![stop("57076", "08:00:00"), stop("57016", "08:20:00")]);
     message.calendar = support::calendar(
         jiff::civil::date(2025, 12, 14),
         Some(jiff::civil::date(2025, 12, 19)),
@@ -360,7 +361,13 @@ fn r119_r120_a_membership_limited_to_some_days_splits_the_trip() {
     let precedence = jr_model::edit::Precedence {
         position: Vec::new(),
     };
-    jr_model::edit::apply(&mut timetable, edits, &precedence, &mut jr_model::Diagnostics::new()).unwrap();
+    jr_model::edit::apply(
+        &mut timetable,
+        edits,
+        &precedence,
+        &mut jr_model::Diagnostics::new(),
+    )
+    .unwrap();
     assert_eq!(timetable.check(), []);
     let horizon = timetable.horizon;
     let trips: Vec<(&str, Vec<String>, usize)> = timetable
@@ -374,7 +381,11 @@ fn r119_r120_a_membership_limited_to_some_days_splits_the_trip() {
                 .dates(horizon)
                 .map(|day| day.to_string())
                 .collect();
-            let zoned = trip.calls.iter().filter(|call| call.zones.is_some()).count();
+            let zoned = trip
+                .calls
+                .iter()
+                .filter(|call| call.zones.is_some())
+                .count();
             (trip.id.as_str(), days, zoned)
         })
         .collect();

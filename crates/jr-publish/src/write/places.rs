@@ -45,7 +45,7 @@ pub fn location(p: &Published, options: &PublishOptions) -> Result<Table, Publis
             let place = place_of(row);
             let estimated = place
                 .position
-                .is_some_and(|position| position.precision == Precision::Estimated);
+                .is_some_and(|position| !position.precision.is_exact());
             if estimated {
                 Cow::Owned(format!("{}{}", place.name, options.approximate_suffix))
             } else {
@@ -129,6 +129,7 @@ pub fn location(p: &Published, options: &PublishOptions) -> Result<Table, Publis
                     None => "missing",
                     Some(Precision::Exact) => "exact",
                     Some(Precision::Estimated) => "estimated",
+                    Some(Precision::Approximate) => "approximate",
                 })
             })),
         ),
@@ -184,6 +185,7 @@ pub fn coordinate_source(source: CoordSource) -> &'static str {
         CoordSource::Overlay => "overlay",
         CoordSource::RouteTime => "route_time",
         CoordSource::RouteEnd => "route_end",
+        CoordSource::PostEstimate => "post_estimate",
     }
 }
 

@@ -69,7 +69,7 @@ fn a_dangling_foreign_key_is_found() {
 #[test]
 fn a_value_outside_its_enumeration_is_found() {
     let mut fixture = Fixture::valid();
-    fixture.rows_mut("location")[2].insert("coordinate_precision".into(), s("approximate"));
+    fixture.rows_mut("location")[2].insert("coordinate_precision".into(), s("guessed"));
     assert_eq!(
         codes(&fixture.write("bad-enum")),
         [code::ENUM_VALUE_INVALID]

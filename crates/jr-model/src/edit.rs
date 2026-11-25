@@ -24,8 +24,8 @@ use crate::handle::{
 use crate::identity::PublicId;
 use crate::timetable::{
     Agency, Assignment, BoardingPoint, Call, CallKey, ConnectionClaim, CoordSource, Note, Place,
-    Position, Precision, Restriction, Route, RouteStop, Shape, SourceKey, Target, Timetable,
-    Transfer, Trip, TripShape, Violation, Zone,
+    Position, Restriction, Route, RouteStop, Shape, SourceKey, Target, Timetable, Transfer, Trip,
+    TripShape, Violation, Zone,
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -374,9 +374,9 @@ impl Precedence {
     /// equal source wins, so a pass may refine its own earlier value.
     fn replaces(&self, current: Option<Position>, new: Position) -> bool {
         let Some(current) = current else { return true };
-        match (current.precision, new.precision) {
-            (Precision::Estimated, Precision::Exact) => true,
-            (Precision::Exact, Precision::Estimated) => false,
+        match (current.precision.is_exact(), new.precision.is_exact()) {
+            (false, true) => true,
+            (true, false) => false,
             _ => self.position_rank(new.source) <= self.position_rank(current.source),
         }
     }

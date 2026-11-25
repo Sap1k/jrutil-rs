@@ -6,11 +6,12 @@
 # POST-R011–R018: what the graph reads from OSM tags.
 [graph]
 # R011: a way is a road when its highway is one of these, it is not closed and it is not
-# generally blocked without a transit permission. Link roads are missing on purpose (B5, kept
-# until the switch: verdict Q3).
+# generally blocked without a transit permission. Link roads are routable (B5 fixed); Oběhy's
+# routing-base filter (`jdf-transit-routing-base-v2`) keeps them.
 highway_key = "highway"
 road_highways = [
-    "motorway", "trunk", "primary", "secondary", "tertiary", "unclassified", "residential",
+    "motorway", "motorway_link", "trunk", "trunk_link", "primary", "primary_link", "secondary",
+    "secondary_link", "tertiary", "tertiary_link", "unclassified", "residential",
     "living_street", "service", "road", "busway",
 ]
 # R011, R014: a way with this highway, or with any of the closed keys (any value), is closed.
@@ -29,17 +30,27 @@ restricted_access_factor = 8.0
 service_highway = "service"
 # R014: tram track.
 tram = { key = "railway", value = "tram" }
-# R015: one-way values; a roundabout without a one-way value is forward only. `oneway:bus`
-# and `oneway:psv` are not read (B7, kept until the switch: verdict Q3).
+# R015: one-way values; a roundabout without a one-way value is forward only. A transit
+# one-way key with an exempt value gives both directions (B7 fixed: contraflow bus lanes).
 oneway_key = "oneway"
 oneway_forward = ["yes", "true", "1"]
 oneway_backward = ["-1", "reverse"]
+oneway_transit_keys = ["oneway:bus", "oneway:psv"]
+oneway_exempt = ["no"]
 roundabout = { key = "junction", value = "roundabout" }
-# R016: a node with this key (any value) is a barrier (B6, kept until the switch: verdict Q3).
+# R016: a node with this key is a barrier; it blocks unless it is one of these kinds and no
+# general access key closes it, or a transit access key permits it (B6 fixed).
 barrier_key = "barrier"
+passable_barriers = [
+    "gate", "lift_gate", "swing_gate", "sliding_gate", "bus_trap", "toll_booth",
+    "border_control", "cattle_grid", "entrance",
+]
 # R018: turn restrictions: a relation with this key and from/via/to members; a value with the
-# prefix is an "only" restriction. `restriction:bus`, `except` and via ways are not read (B7).
+# prefix is an "only" restriction. A transit restriction key takes precedence; an `except`
+# naming a transit access key exempts buses (B7 fixed). Via ways are not read.
 restriction_key = "restriction"
+transit_restriction_keys = ["restriction:bus", "restriction:psv"]
+restriction_except_key = "except"
 restriction_only_prefix = "only_"
 restriction_from_role = "from"
 restriction_via_role = "via"

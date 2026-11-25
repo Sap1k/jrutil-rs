@@ -58,7 +58,7 @@ pub const POST_R031: Rule = Rule {
     summary: "route points: observations of a stop grouped by exact coordinate",
 };
 
-/// A route point's representative, members, lifecycle flags (B8 kept), support and upper-cased
+/// A route point's representative, members, lifecycle flags (B8 fixed: `policy/posts.toml`), support and upper-cased
 /// modes come from its members.
 ///
 /// The evaluator reads these facts per point, not per observation.

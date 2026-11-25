@@ -169,6 +169,8 @@ pub enum CoordSource {
     RouteTime,
     /// Placed past the last anchor of a route.
     RouteEnd,
+    /// A boarding post chosen by the post estimator.
+    PostEstimate,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -176,6 +178,15 @@ pub enum CoordSource {
 pub enum Precision {
     Exact,
     Estimated,
+    /// Somewhere in an area of candidate positions, the position its centre (the post
+    /// estimator's `Area` decision).
+    Approximate,
+}
+
+impl Precision {
+    pub fn is_exact(self) -> bool {
+        self == Precision::Exact
+    }
 }
 
 /// Where something is, and how we know. `None` in a `position` field is "missing".

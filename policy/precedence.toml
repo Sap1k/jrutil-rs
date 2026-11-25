@@ -5,4 +5,4 @@
 # timetable states where its own stops are and beats what the national side gathered (reviewed
 # corrections, regional catalogues, OpenStreetMap: OVL-R091); estimates along a route are last.
 # An exact position always beats an estimated one, whatever its source.
-position = ["sr70", "overlay", "gapfill", "catalogue", "osm", "route_time", "route_end"]
+position = ["sr70", "overlay", "gapfill", "catalogue", "osm", "route_time", "route_end", "post_estimate"]

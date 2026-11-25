@@ -58,6 +58,22 @@ impl Osm {
         self
     }
 
+    /// A restriction relation with extra tags.
+    fn tagged_restriction(mut self, id: i64, tags: Tags, from: i64, via: i64, to: i64) -> Self {
+        let mut all = vec![("type", "restriction")];
+        all.extend(tags);
+        self.relations.push((
+            id,
+            all,
+            vec![
+                (OsmMemberType::Way, from, "from"),
+                (OsmMemberType::Node, via, "via"),
+                (OsmMemberType::Way, to, "to"),
+            ],
+        ));
+        self
+    }
+
     fn build(&self) -> RoutingGraph {
         let policy = RoutingPolicy::builtin();
         let mut builder = GraphBuilder::new(&policy.graph);
@@ -185,7 +201,7 @@ fn post_r011_road_way_eligibility_and_access() {
     assert!(road(residential()));
     assert!(road(vec![("highway", " Busway ")]));
     assert!(!road(vec![("highway", "track")]));
-    assert!(!road(vec![("highway", "motorway_link")]), "B5 kept");
+    assert!(road(vec![("highway", "motorway_link")]), "B5 fixed");
     assert!(!road(vec![("highway", "construction")]));
     assert!(!road(vec![("highway", "residential"), ("disused", "no")]));
     assert!(!road(vec![
@@ -301,13 +317,13 @@ fn post_r015_one_way_in_both_spellings_and_roundabouts() {
     }
     assert_eq!(routes(with(("junction", "roundabout"))), (true, false));
     assert_eq!(routes(with(("oneway", "no"))), (true, true));
-    // Contraflow for buses is not read (B7 kept).
+    // A contraflow bus lane (B7 fixed).
     let contraflow = vec![
         ("highway", "residential"),
         ("oneway", "yes"),
         ("oneway:bus", "no"),
     ];
-    assert_eq!(routes(contraflow), (true, false));
+    assert_eq!(routes(contraflow), (true, true));
 }
 
 #[test]
@@ -323,7 +339,13 @@ fn post_r016_barrier_nodes_with_and_without_a_bus_exemption() {
     };
     assert!(through(Vec::new()));
     assert!(!through(vec![("barrier", "bollard")]));
-    assert!(!through(vec![("barrier", "lift_gate")]), "B6 kept");
+    // A lift gate at a bus station lets the bus through (B6 fixed), unless access closes it.
+    assert!(through(vec![("barrier", "lift_gate")]));
+    assert!(!through(vec![
+        ("barrier", "lift_gate"),
+        ("access", "private")
+    ]));
+    assert!(!through(vec![("barrier", "kerb")]));
     assert!(through(vec![("barrier", "lift_gate"), ("bus", "yes")]));
     assert!(through(vec![
         ("barrier", "bus_trap"),
@@ -390,6 +412,31 @@ fn post_r018_turn_restrictions_refuse_and_allow_turns() {
         .build();
     assert!((cost(&unrelated, from_south, east) - 200.0).abs() < 1.0);
     assert_eq!(unrelated.counts().restrictions, 2);
+
+    // Buses are exempt (B7 fixed): `except`, and a bus restriction over the general one.
+    let except = crossroads()
+        .tagged_restriction(
+            10,
+            vec![("restriction", "no_right_turn"), ("except", "psv;bicycle")],
+            1,
+            5,
+            3,
+        )
+        .build();
+    assert!((cost(&except, from_south, east) - 200.0).abs() < 1.0);
+    let bus_only_straight = crossroads()
+        .tagged_restriction(
+            10,
+            vec![
+                ("restriction", "no_right_turn"),
+                ("restriction:bus", "only_straight_on"),
+            ],
+            1,
+            5,
+            2,
+        )
+        .build();
+    assert!((cost(&bus_only_straight, from_south, west) - 400.0).abs() < 1.0);
 }
 
 #[test]

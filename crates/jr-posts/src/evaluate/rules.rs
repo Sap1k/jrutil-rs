@@ -250,12 +250,12 @@ pub const POST_R108: Rule = Rule {
 };
 
 /// Physical and Area decisions both publish the chosen hypothesis (verdict Q6); the recorded
-/// score is the post probability and the recorded margin the area probability (B10 kept).
-///
-/// That is what the F# assignments table recorded.
+/// score is the post probability, the post and area probabilities are reported in their own
+/// columns, and a learned decision records no margin (B10 fixed: F# wrote the area probability
+/// as the margin). An Area decision's post is published `approximate` (POST-R130).
 pub const POST_R109: Rule = Rule {
     id: "POST-R109",
-    summary: "learned physical and area publish the hypothesis; margin = area probability",
+    summary: "learned physical and area publish the hypothesis; probabilities reported as such",
 };
 
 /// One decision per context: authored contexts carry their family's heuristic resolution and
@@ -276,13 +276,15 @@ pub const POST_R121: Rule = Rule {
 };
 
 /// An authored post takes a position when its contexts' family decisions name exactly one
-/// hypothesis, unanimously if the policy says so, each above the authored score and margin,
-/// and some unlabelled context at the stop published that hypothesis (B11 kept, verdict Q5).
+/// hypothesis, unanimously if the policy says so, each above the authored score and margin.
+/// Whether an unrelated unlabelled context at the stop published that hypothesis does not
+/// matter: at a stop where every call is authored, the posts could never be placed (B11 fixed,
+/// `docs/roadmap.md`).
 ///
 /// Strong agreement lets the carrier's post take the estimated position.
 pub const POST_R122: Rule = Rule {
     id: "POST-R122",
-    summary: "authored posts positioned by unanimous strong family decisions (B11 kept)",
+    summary: "authored posts positioned by unanimous strong family decisions",
 };
 
 /// Counts per rule replace the F# counters (contexts, candidate-bearing stops, unresolved
