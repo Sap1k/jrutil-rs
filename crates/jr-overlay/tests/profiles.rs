@@ -2,7 +2,9 @@
 
 mod support;
 
-use jr_overlay::profile::{BaseProfile, Capability, ProfileError, SourceProfile, TripTier};
+use jr_overlay::profile::{
+    BaseProfile, Capability, ProfileError, RouteTier, SourceProfile, TripTier,
+};
 
 #[test]
 fn ovl_shipped_profiles_parse_with_their_effective_values() {
@@ -11,12 +13,18 @@ fn ovl_shipped_profiles_parse_with_their_effective_values() {
     assert!(SourceProfile::builtin("unknown").is_none());
     assert_eq!(&*pid.source_id, "pid-gtfs");
     assert_eq!(&*jmk.source_id, "ids-jmk-gtfs");
-    // Verdict Q2: PID runs with the coordinate tier the F# merge gave it.
-    let identity = pid.stops.coordinate_identity.unwrap();
+    // B2, verdict Q2: each source has its own settings. PID states no coordinate-identity
+    // tier and no stop zones; IDS JMK states its 25 m / 10 m tier and no companion route tier.
+    assert!(pid.stops.coordinate_identity.is_none());
+    assert!(!pid.capabilities.contains_key(&Capability::StopZones));
+    let identity = jmk.stops.coordinate_identity.unwrap();
     assert_eq!(
         (identity.maximum_metres, identity.minimum_margin_metres),
         (25.0, 10.0)
     );
+    assert_eq!(jmk.routes.tiers, vec![RouteTier::StructuralTripEvidence]);
+    assert_eq!(pid.trips.maximum_first_departure_delta_seconds, 420);
+    assert_eq!(jmk.trips.maximum_first_departure_delta_seconds, 420);
     assert!(pid.grants(Capability::Schedules, TripTier::PatternNearest));
     assert!(!pid.grants(Capability::Schedules, TripTier::PatternEditNearest));
     assert!(jmk.hooks.operational_crosswalk.is_some() && jmk.hooks.zones.is_some());
@@ -73,6 +81,31 @@ fn ovl_profile_refuses_unknown_keys_tiers_and_capabilities() {
         pid_with(
             "source_native_modes = [\"bus\",",
             "source_native_modes = [\"rail\", \"bus\","
+        ),
+        Err(ProfileError::Invalid { .. })
+    ));
+}
+
+#[test]
+fn ovl_r136_a_profile_lists_its_tiers_strongest_first() {
+    assert!(matches!(
+        pid_with(
+            "tiers = [\"full_signature\", \"pattern_endpoints\"",
+            "tiers = [\"pattern_endpoints\", \"full_signature\""
+        ),
+        Err(ProfileError::Invalid { .. })
+    ));
+    assert!(matches!(
+        pid_with(
+            "tiers = [\"companion_assertion\", \"structural_trip_evidence\"]",
+            "tiers = [\"structural_trip_evidence\", \"companion_assertion\"]"
+        ),
+        Err(ProfileError::Invalid { .. })
+    ));
+    assert!(matches!(
+        pid_with(
+            "\"pattern_first\", \"pattern_nearest\"",
+            "\"pattern_first\", \"pattern_first\", \"pattern_nearest\""
         ),
         Err(ProfileError::Invalid { .. })
     ));

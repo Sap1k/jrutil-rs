@@ -10,8 +10,8 @@ use crate::prepare::signature_present as present;
 /// to last arrival), and over aligned call pairs with both times the sum, maximum and sum of
 /// squares of the arrival and departure deltas, and the count of aligned target calls. Seconds,
 /// unrounded; a negative time (a folded arrival before midnight) counts as absent. A missing
-/// delta is `i32::MAX / 4`, a missing sum `i64::MAX / 4`. There is no maximum deviation (B1,
-/// verdict Q1).
+/// delta is `i32::MAX / 4`, a missing sum `i64::MAX / 4`. The tolerance on the first-departure
+/// delta is R133's.
 ///
 /// The nearest base trip in time is the most likely twin of a source trip.
 pub const OVL_R069: Rule = Rule {

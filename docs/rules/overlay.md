@@ -55,6 +55,23 @@ Sources read in full:
 **After the switch (2026-11-24):** the limitations and post-switch changes recorded below are
 decided in `docs/roadmap.md`, which takes precedence where the two differ.
 
+**Step two (phase 4, 2026-11-25)** changes what the overlay decides, as the roadmap says, and
+supersedes Q1, Q2 and Q10 below:
+
+- **Q1 (B1)**: a base trip departing further from the source trip than the profile's
+  `trips.maximum_first_departure_delta_seconds` is not a candidate (OVL-R133; 420 s for both
+  sources, measured on the golden slice); on each date a base trip is bound by at most one source
+  trip of each source, best rank first, and a source trip whose candidate was taken takes its
+  next-best one (OVL-R134, which runs the availability passes R074/R075 per date and keeps Q15's
+  expansion for equivalent base trips nobody else takes). Claims of two sources on one base trip
+  and date still merge or are quarantined by R082, with B23 fixed. Golden slice: 4 269
+  `overlay_fact_conflict` → 0.
+- **Q2 (B2)**: each shipped profile states its own source's F# policy, not the merged template:
+  PID has no coordinate-identity tier and no `stop_zones`; IDS JMK uses the structural route tier
+  only. A profile lists its tiers strongest first (OVL-R136).
+- **Q10 (B6)**: a source's place zones go only to the output trips that source states
+  (OVL-R135).
+
 **These override the "Proposed verdict" lines below.** Where a rule is not listed, its proposed
 verdict stands. Rule IDs in the Rust code are the IDs of this file.
 
@@ -1021,7 +1038,8 @@ publishes from it (serving §2).
 - **Where**: `StopMatching.fs` 118–147.
 - **Why**: IDS JMK names differ a lot from CIS names (test name "verbose IDS JMK forms").
 - **Pinned by**: `Combined …` (`coordinate_identity_unique`).
-- **Constants**: 25 m and 10 m (IDS JMK profile; applied to PID by the merge, B2).
+- **Constants**: 25 m and 10 m (IDS JMK profile; applied to PID by the merge, B2; since phase 4
+  IDS JMK only).
 - **Diagnostic**: three codes above.
 - **Proposed verdict**: port as tier 3, per source.
 
@@ -1373,7 +1391,8 @@ publishes from it (serving §2).
   times exist: Σ|Δarr| + Σ|Δdep| (aggregate), max, Σ Δ² (both `Int64.MaxValue/4` when no pair);
   aligned count. Seconds, unrounded.
 - **Where**: `TripScoring.fs` `candidateTimeScore` 152–184.
-- **Constants**: the sentinels. **There is no maximum deviation anywhere** (B1).
+- **Constants**: the sentinels. **There is no maximum deviation anywhere** (B1). Phase 4: the
+  profile's maximum first-departure deviation (OVL-R133).
 - **Pinned by**: `Overlay enriches non-rail facts…` ("Aligned intermediate call times must
   resolve an edited-pattern tie").
 - **Proposed verdict**: port features; add a policy maximum (Q1).
@@ -1413,7 +1432,8 @@ publishes from it (serving §2).
   on the same date; nothing prevents it here (resolved per date in R082).
 - **Where**: `TripMatching.fs` 286–298, 318–319.
 - **Pinned by**: none.
-- **Proposed verdict**: replace by a one-to-one assignment per date (Q1).
+- **Proposed verdict**: replace by a one-to-one assignment per date (Q1). Done in phase 4
+  (OVL-R134).
 - **Why / Constants / Diagnostic**: – / – / –.
 
 #### OVL-R073 Unmatched trip classification
@@ -1440,13 +1460,15 @@ publishes from it (serving §2).
 - **Where**: `TripMatching.fs` `resolveByAvailability` 324–389.
 - **Pinned by**: `Overlay enriches non-rail facts…` (`st4amb_251201` → `bt4b`).
 - **Diagnostic**: `trip_target_availability_resolved`.
-- **Proposed verdict**: port (or subsume in the assignment of Q1).
+- **Proposed verdict**: port (or subsume in the assignment of Q1). Phase 4: run per date after
+  the assignment (OVL-R134), on the claims it made; claims count per source.
 - **Why / Constants**: – / –.
 
 #### OVL-R075 Capacity gap and ambiguous rows
 
 - **What**: a remaining pending date whose candidates are all claimed by others →
-  `base_snapshot_capacity_gap`; a trip with no binding and all pending dates such → capacity-gap
+  `base_snapshot_capacity_gap` (phase 4: also a date whose every candidate R134 gave to other
+  source trips of the source); a trip with no binding and all pending dates such → capacity-gap
   trip. Every remaining candidate goes to `ambiguous_trip_candidates.csv`.
 - **Where**: `TripMatching.fs` 391–415.
 - **Diagnostic**: `base_snapshot_capacity_gap`.
@@ -1548,7 +1570,9 @@ publishes from it (serving §2).
   conflicting schedules`; `Generic feed…`; `Combined …` (cross-source conflict keeps 09:00).
 - **Diagnostic**: four codes above (4 020 `overlay_fact_conflict` and 318
   `overlay_newer_source_selected` on the golden run).
-- **Proposed verdict**: port with B23 fixed (Q3).
+- **Proposed verdict**: port with B23 fixed (Q3). Phase 4: R134 leaves one claim per source on
+  a base trip and date, so only claims of several sources reach this rule (merged, or
+  `cross_source_fact_conflict`); the newest-revision branch no longer fires.
 - **Constants**: none.
 
 #### OVL-R083 Incomplete authority bindings
@@ -1786,7 +1810,7 @@ publishes from it (serving §2).
 - **Constants**: `ids-jmk-gtfs`, `ids-jmk`.
 - **Diagnostic**: none.
 - **Proposed verdict**: port as a profile hook `zones { system = "ids-jmk" }`, scoped to calls of
-  trips bound to the source (Q10).
+  trips bound to the source (Q10). Done in phase 4 (OVL-R135).
 
 #### OVL-R102 Agencies table
 
@@ -2168,7 +2192,7 @@ not change.
 | CIS line claim | `route_sub_agencies.txt` by (route, sub-agency) | none | none | policy `route_join` (R018) |
 | Operational crosswalk | none | `api.txt` line/course, strict | none | code branch `adapter = ids-jmk-v1` (R019); Oběhy download check |
 | Route match tiers | companion + structural | structural | per policy | policy (unioned) |
-| Coordinate identity tier | not configured (gets 25/10 m by merge) | 25 m / 10 m | per policy | policy (max-merged) |
+| Coordinate identity tier | not configured (gets 25/10 m by merge; off since phase 4) | 25 m / 10 m | per policy | policy (max-merged) |
 | Overrides | `pid-stop-overrides.csv` | none | per policy | policy |
 | Authority modes | bus, tram, metro, trolleybus, ferry | bus, tram, trolleybus, ferry | per policy | policy → trip flags |
 | Source-native modes | same five | ferry | per policy | policy → trip flags |
@@ -2268,6 +2292,9 @@ equal), and the rail mode classes.
   line is authoritative and no selection resolved. Neither the national trip nor a source trip runs
   that day, although the diagnostic says "national value retained". PID owns its lines, so this hits
   PID schedule conflicts (part of the 4 020 events).
+
+Fixed in phase 4: B1 (OVL-R133, R134), B2 (per-source profiles, OVL-R136), B6 (OVL-R135). B23
+stays fixed for the conflicts that remain (claims of two sources, R082).
 
 
 ---
@@ -2487,3 +2514,62 @@ all of the first four items by construction.
 - **Pinned by**: `ovl_r132_train_trip_ids_key_the_national_trains_of_their_course`.
 - **Constants**: the namespace suffix `gtfs_trip_line_course` (serving 5.3).
 - **Diagnostic**: none.
+
+#### OVL-R133 A base trip departing beyond the tolerance is not a candidate
+
+- **What**: a candidate whose first-departure delta (R069) exceeds the source profile's
+  `trips.maximum_first_departure_delta_seconds` is dropped before the per-date decision; one
+  without a comparable first departure is kept. A trip whose every candidate is dropped is
+  unmatched with `trip_departure_deviation_exceeded` (R073, before `base_snapshot_gap`).
+- **Where**: `crates/jr-overlay/src/matching/decide.rs`.
+- **Why**: B1, verdict Q1. The nearest base trip is the twin only within a tolerance. On the
+  golden slice (879c00f) the deltas of the 98 666 accepted bindings run about 700–1 700 per minute
+  bucket from 1 to 7 minutes (mostly Prague trams on a changed timetable), then drop to 78 at
+  8 minutes and 43 at 9; the rest cluster at 10, 15, 20 and 30 minutes and beyond (1 505
+  bindings over 7 minutes), the neighbouring run of a regular interval.
+- **Pinned by**: `ovl_r133_a_base_trip_departing_beyond_the_tolerance_is_not_a_candidate`.
+- **Constants**: `maximum_first_departure_delta_seconds = 420` in `policy/overlay/pid.toml` and
+  `ids-jmk.toml`.
+- **Diagnostic**: `trip_departure_deviation_exceeded`.
+
+#### OVL-R134 Per date and source, each base trip goes to one source trip
+
+- **What**: per date (in parallel), the options of every source trip running that day (R071,
+  within R133) are taken in the order (trip tier, rank, primary route tier first, newer revision,
+  source, source trip ID, base trip). A source trip reaching its first option whose base trip no
+  source trip of its source holds takes it; free equal-best options of several meanings make the
+  date pending (R074); equal-best equivalent ones it also takes if they are still free after the
+  availability passes (Q15). A source trip whose options were all taken by better-ranked ones is
+  a capacity gap that day (R075). Bindings collect their dates as R072 says.
+- **Where**: `crates/jr-overlay/src/matching/assignment.rs` (with `availability.rs`).
+- **Why**: B1, verdict Q1: several source trips nearest to one base trip bound it together and
+  R082 quarantined the date for all of them (4 269 `overlay_fact_conflict` events on the golden
+  slice), losing service under authority (B23) and the national times elsewhere.
+- **Pinned by**: `ovl_r134_a_base_trip_goes_to_the_nearest_source_trip_and_the_other_moves_on`
+  (input order and thread count), `ovl_r134_with_nothing_left_the_tied_source_trip_is_a_capacity_gap`,
+  `ovl_r134_two_source_trips_of_one_source_do_not_conflict_over_a_base_trip`.
+- **Constants**: none.
+- **Diagnostic**: `base_snapshot_capacity_gap` (a date lost to better-ranked source trips).
+
+#### OVL-R135 A source's place zones apply only to its own trips
+
+- **What**: R101's zones of a source are given only to the calls of output trips that source
+  states: parts of base trips whose selection it is a source of, and trips added from it. Where
+  several of a trip's sources zone one place, the first in source order gives the zones.
+- **Where**: `crates/jr-overlay/src/projection/batch.rs`.
+- **Why**: B6, verdict Q10: the zones are the source's tariff and say nothing of trips it does
+  not run. On the golden slice 247 666 calls of national and PID trips carried IDS JMK zones.
+- **Pinned by**: `ovl_r101_r135_source_zones_apply_only_to_the_trips_of_their_source`.
+- **Constants**: none.
+- **Diagnostic**: none (the projection summary's `calls_zoned`).
+
+#### OVL-R136 A profile lists its tiers strongest first
+
+- **What**: `routes.tiers` and `trips.tiers` must be non-empty, distinct and in canonical order
+  (strongest first); otherwise the profile is refused.
+- **Where**: `crates/jr-overlay/src/profile/source.rs`.
+- **Why**: B2, verdict Q2: F# ignored the order a profile listed and ranked by the canonical one;
+  refusing any other order makes the file state the precedence that applies.
+- **Pinned by**: `ovl_r136_a_profile_lists_its_tiers_strongest_first`.
+- **Constants**: none.
+- **Diagnostic**: a profile error (fatal, verdict Q11).

@@ -4,12 +4,22 @@
 
 use std::collections::BTreeMap;
 
+use jr_model::Rule;
 use jr_model::timetable::Mode;
 use regex::Regex;
 use serde::Deserialize;
 
 use super::ProfileError;
 use super::vocabulary::{Capability, RouteTier, TripTier};
+
+/// A profile lists its route tiers and its trip tiers strongest first, in the canonical order
+/// of [`RouteTier`] and [`TripTier`]; any other order is a profile error. The engine ranks by
+/// that order, so the file states the precedence that applies (B2, verdict Q2: F# ignored the
+/// order a profile listed).
+pub const OVL_R136: Rule = Rule {
+    id: "OVL-R136",
+    summary: "a profile lists its route and trip tiers strongest first",
+};
 
 /// One source's profile (`policy/overlay/<name>.toml`).
 #[derive(Clone, Debug, Deserialize)]
@@ -44,7 +54,7 @@ pub struct RoutePolicy {
     pub excluded_route_types: Vec<i32>,
     /// OVL-R013: modes that never enter (heavy rail: "No regional static rail data is used").
     pub excluded_modes: Vec<Mode>,
-    /// OVL-R049, R050: the route tiers this source may use.
+    /// OVL-R049, R050: the route tiers this source may use, strongest first (OVL-R136).
     pub tiers: Vec<RouteTier>,
 }
 
@@ -88,9 +98,10 @@ pub struct TripPolicy {
     /// OVL-R065, R068, R080: bind to a base trip whose every call the source makes and keep the
     /// source's further calls.
     pub keep_source_calls: bool,
-    /// OVL-R066, R071: the trip tiers this source may use. Their precedence is the canonical
-    /// order ([`TripTier`]), not the order listed.
+    /// OVL-R066, R071: the trip tiers this source may use, strongest first (OVL-R136).
     pub tiers: Vec<TripTier>,
+    /// OVL-R133: the largest first-departure deviation, in seconds, of a candidate base trip.
+    pub maximum_first_departure_delta_seconds: u32,
     /// OVL-R067.
     pub pattern_edit: PatternEdit,
 }
@@ -254,11 +265,17 @@ impl SourceProfile {
         if !(0.0..=1.0).contains(&trips.pattern_edit.minimum_agreement) {
             problems.push("trips.pattern_edit.minimum_agreement must lie in 0..=1".to_owned());
         }
-        if trips.tiers.is_empty() || has_duplicates(&trips.tiers) {
-            problems.push("trips.tiers must be non-empty and distinct".to_owned());
+        if trips.tiers.is_empty() || !strictly_increasing(&trips.tiers) {
+            problems.push(
+                "trips.tiers must be non-empty, distinct and listed strongest first (OVL-R136)"
+                    .to_owned(),
+            );
         }
-        if self.routes.tiers.is_empty() || has_duplicates(&self.routes.tiers) {
-            problems.push("routes.tiers must be non-empty and distinct".to_owned());
+        if self.routes.tiers.is_empty() || !strictly_increasing(&self.routes.tiers) {
+            problems.push(
+                "routes.tiers must be non-empty, distinct and listed strongest first (OVL-R136)"
+                    .to_owned(),
+            );
         }
         let authority = &self.authority;
         for mode in &authority.source_native_modes {
@@ -343,9 +360,7 @@ impl SourceProfile {
     }
 }
 
-fn has_duplicates<T: PartialEq>(values: &[T]) -> bool {
-    values
-        .iter()
-        .enumerate()
-        .any(|(index, value)| values[..index].contains(value))
+/// R136: distinct and in canonical order.
+fn strictly_increasing<T: Ord>(values: &[T]) -> bool {
+    values.windows(2).all(|pair| pair[0] < pair[1])
 }

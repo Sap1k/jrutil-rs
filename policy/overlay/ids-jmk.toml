@@ -1,5 +1,6 @@
-# The IDS JMK (South Moravia) source profile (docs/rules/overlay.md section 5). Values are those
-# effective in the combined F# run (section 2.3, verdict Q2).
+# The IDS JMK (South Moravia) source profile (docs/rules/overlay.md section 5). Values are IDS
+# JMK's own F# policy (ids-jmk-overlay-v1.json, section 2.3), not the merged template of a
+# combined F# run (B2, verdict Q2).
 
 source_id = "ids-jmk-gtfs"
 key_namespace = "ids-jmk"
@@ -8,8 +9,8 @@ maximum_snapshot_skew_days = 7
 [routes]
 excluded_route_types = [2]
 excluded_modes = ["rail"]
-# Effective through the F# union; the companion tier finds nothing without a line-claim hook.
-tiers = ["companion_assertion", "structural_trip_evidence"]
+# IDS JMK asserts no national line (no line-claim hook): structural evidence only.
+tiers = ["structural_trip_evidence"]
 
 [stops]
 maximum_distance_metres = 300.0
@@ -21,13 +22,17 @@ context = { enabled = true, minimum_mapped_calls = 1, maximum_unresolved_groups_
 time_resolution_seconds = 60
 exact_pattern_proximity = true
 keep_source_calls = true
+# OVL-R136: strongest first.
 tiers = ["full_signature", "pattern_endpoints", "pattern_first", "pattern_nearest", "pattern_edit_nearest"]
+# OVL-R133: as PID (measured on the golden slice over both sources).
+maximum_first_departure_delta_seconds = 420
 pattern_edit = { enabled = true, maximum_edits = 3, minimum_agreement = 0.9, require_same_endpoints = true }
 
 [authority]
 modes = ["bus", "tram", "trolleybus", "water"]
 source_native_modes = ["water"]
 
+# OVL-R077. headsigns is granted as verdict Q12 says (F# applied them to authority slices).
 [capabilities]
 stop_coordinates = {}
 boarding_points = {}

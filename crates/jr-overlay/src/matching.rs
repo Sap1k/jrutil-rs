@@ -1,11 +1,11 @@
-//! Trip matching (OVL-R065–R076): each active source trip, date by date, to the base trips it
-//! is, as F# matches them (verdict Q1): the nearest candidate per date, equivalent ties expanded
-//! (Q15), equal-best candidates of different meaning left to the availability passes, no time
-//! limit and no one-to-one assignment.
-//!
-//! Source trips are matched in parallel; results are collected in source and trip order. The
-//! availability passes run over every source together, sequentially.
+//! Trip matching (OVL-R065–R076, R133, R134): each active source trip, date by date, to the base
+//! trips it is. A source trip's candidates within the time tolerance (R133) are found in
+//! parallel; then, date by date over every source together, each base trip goes to one source
+//! trip of each source, best rank first, and the others take their next-best candidate (R134,
+//! B1 fixed, verdict Q1). Equivalent ties expand (Q15); equal-best candidates of different
+//! meaning are left to the availability passes (R074).
 
+mod assignment;
 mod availability;
 pub mod candidates;
 mod coverage;
@@ -31,6 +31,7 @@ pub const RULES: &[&[Rule]] = &[
     candidates::RULES,
     score::RULES,
     decide::RULES,
+    assignment::RULES,
     availability::RULES,
     coverage::RULES,
 ];
@@ -93,7 +94,8 @@ pub struct TripFlags {
 /// The outcome of matching.
 #[derive(Debug, Default)]
 pub struct Matches {
-    /// R072, R074: in source and trip order, then the availability bindings in resolution order.
+    /// R072, R074: in source and trip order, then the availability bindings by date and
+    /// resolution order.
     pub bindings: Vec<Binding>,
     /// R075: what stayed ambiguous after R074, in pending order.
     pub ambiguous: Vec<Pending>,
@@ -116,7 +118,7 @@ impl Matches {
     }
 }
 
-/// R065–R076.
+/// R065–R076, R133, R134.
 pub fn match_trips(
     prepared: &Prepared<'_>,
     authority: &Authority,
@@ -130,9 +132,9 @@ pub fn match_trips(
             (0..prepared.trips.len() as u32).map(move |trip| (source as u32, trip))
         })
         .collect();
-    let outcomes: Vec<decide::Outcome> = jobs
+    let options: Vec<decide::TripOptions> = jobs
         .par_iter()
-        .map(|&(source, trip)| decide::match_trip(prepared, source, trip))
+        .map(|&(source, trip)| decide::options(prepared, source, trip))
         .collect();
     let mut matches = Matches {
         flags: prepared
@@ -142,17 +144,7 @@ pub fn match_trips(
             .collect(),
         ..Matches::default()
     };
-    let mut pending = Vec::new();
-    for ((source, trip), outcome) in jobs.into_iter().zip(outcomes) {
-        for diagnostic in outcome.diagnostics {
-            diagnostics.push(diagnostic);
-        }
-        matches.bindings.extend(outcome.bindings);
-        pending.extend(outcome.pending);
-        matches.unmatched.extend(outcome.unmatched);
-        matches.flags[source as usize][trip as usize] = outcome.flags;
-    }
-    availability::resolve(prepared, &mut matches, pending, diagnostics);
+    assignment::assign(prepared, options, &mut matches, diagnostics);
     matches.coverage = coverage::coverage(prepared, authority, &matches);
     matches
 }

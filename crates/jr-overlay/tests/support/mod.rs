@@ -220,6 +220,7 @@ time_resolution_seconds = 60
 exact_pattern_proximity = true
 keep_source_calls = false
 tiers = ["full_signature", "pattern_endpoints", "pattern_first", "pattern_nearest", "pattern_edit_nearest"]
+maximum_first_departure_delta_seconds = 3600
 pattern_edit = {{ enabled = true, maximum_edits = 3, minimum_agreement = 0.9, require_same_endpoints = true }}
 [authority]
 modes = ["bus", "tram"]

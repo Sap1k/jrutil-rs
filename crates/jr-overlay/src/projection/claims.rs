@@ -19,7 +19,8 @@ use crate::profile::Capability;
 /// source trips count as represented that day. A conflict keeps the national trip on that date
 /// even on a line-date under authority (B23 fixed, verdict Q3).
 ///
-/// Several source trips may claim one base trip on one day (no one-to-one assignment).
+/// R134 leaves one claim per source on a base trip and day, so the claims compared here are
+/// those of several sources.
 pub const OVL_R082: Rule = Rule {
     id: "OVL-R082",
     summary: "per base trip and date: merge compatible claims, else newest revision, else keep",

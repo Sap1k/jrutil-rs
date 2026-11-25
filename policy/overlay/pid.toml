@@ -1,6 +1,6 @@
-# The PID (Prague) source profile (docs/rules/overlay.md section 5). Values are those effective
-# in the combined F# run (section 2.3, verdict Q2): the coordinate-identity tier, route tiers
-# and capabilities are the union over both sources there, so they are stated here as they apply.
+# The PID (Prague) source profile (docs/rules/overlay.md section 5). Values are PID's own F#
+# policy (pid-overlay-v1.json, section 2.3), not the merged template of a combined F# run (B2,
+# verdict Q2): PID has no coordinate-identity tier and no stop zones.
 
 source_id = "pid-gtfs"
 key_namespace = "pid"
@@ -15,15 +15,18 @@ tiers = ["companion_assertion", "structural_trip_evidence"]
 [stops]
 maximum_distance_metres = 300.0
 split_flat_groups_by_name = true
-# Effective through the F# merge (maximum over sources).
-coordinate_identity = { maximum_metres = 25.0, minimum_margin_metres = 10.0 }
+# OVL-R043: PID's policy states no coordinate-identity tier, so it is off.
 context = { enabled = true, minimum_mapped_calls = 1, maximum_unresolved_groups_per_trip = 1 }
 
 [trips]
 time_resolution_seconds = 60
 exact_pattern_proximity = true
 keep_source_calls = true
+# OVL-R136: strongest first.
 tiers = ["full_signature", "pattern_endpoints", "pattern_first", "pattern_nearest", "pattern_edit_nearest"]
+# OVL-R133: deviations of accepted bindings on the golden slice fall from ~700 per minute up to
+# 7 min to under 80 at 8 min; beyond is the neighbouring run of a dense line.
+maximum_first_departure_delta_seconds = 420
 pattern_edit = { enabled = true, maximum_edits = 3, minimum_agreement = 0.9, require_same_endpoints = true }
 
 [authority]
@@ -34,7 +37,7 @@ integrated_systems = [
     { system = "30001", excluded_lines = ["199041", "199042"], maximum_silenced_lines = 20 },
 ]
 
-# OVL-R077. stop_zones is effective through the F# union but inert without a zones hook.
+# OVL-R077. PID's policy also lists shapes, which is not a capability (verdict Q14).
 [capabilities]
 stop_coordinates = {}
 boarding_points = {}
@@ -44,7 +47,6 @@ route_long_name = {}
 route_color = {}
 route_text_color = {}
 transfers = { minimum_tier = "pattern_nearest" }
-stop_zones = {}
 schedules = { minimum_tier = "pattern_nearest" }
 # Verdict Q12: F# applied source headsigns to authority slices.
 headsigns = {}

@@ -237,21 +237,28 @@ fn ovl_r086_r090_authority_retires_an_unclaimed_national_trip_and_adds_the_sourc
 #[test]
 fn ovl_r082_a_conflict_on_an_owned_line_date_keeps_the_national_trip() {
     let (base, _, _, trip) = line_five();
-    let profile = claiming_profile("");
-    // Two source trips of one source claim the base trip with other times; neither is newer.
-    let calls: Vec<_> = abc("s1", ["10:00", "10:06", "10:10"])
-        .into_iter()
-        .chain(abc("s2", ["10:00", "10:07", "10:10"]))
-        .collect();
-    let feed = trip_feed(
-        &profile,
-        &[("r", "X", 3)],
-        &[("r", "s1", "1"), ("r", "s2", "1")],
-        &calls,
-        "r,1,100005\n",
+    // Two sources claim the base trip with other times: two descriptions that disagree.
+    let mut first = claiming_profile("");
+    first.source_id = "one-gtfs".into();
+    let mut second = claiming_profile("");
+    second.source_id = "two-gtfs".into();
+    let feed = |profile: &SourceProfile, middle: &str| {
+        trip_feed(
+            profile,
+            &[("r", "X", 3)],
+            &[("r", "s1", "1")],
+            &abc("s1", ["10:00", middle, "10:10"]),
+            "r,1,100005\n",
+        )
+    };
+    let (t, overlaid, codes) = applied(
+        &base.t,
+        vec![
+            (&first, feed(&first, "10:06")),
+            (&second, feed(&second, "10:07")),
+        ],
     );
-    let (t, overlaid, codes) = applied(&base.t, vec![(&profile, feed)]);
-    assert!(codes.contains(&"overlay_fact_conflict".to_owned()));
+    assert!(codes.contains(&"cross_source_fact_conflict".to_owned()));
     let kept = &t.trips[trip];
     assert_eq!(running(&t, kept), days(0..364));
     assert_eq!(
@@ -262,9 +269,10 @@ fn ovl_r082_a_conflict_on_an_owned_line_date_keeps_the_national_trip() {
 }
 
 #[test]
-fn ovl_r082_the_newer_revision_wins() {
+fn ovl_r134_two_source_trips_of_one_source_do_not_conflict_over_a_base_trip() {
     let (base, _, _, trip) = line_five();
-    let profile = generic_profile(
+    // The older revision is the nearer: it binds; the newer one is added under authority.
+    let profile = claiming_profile(
         "[hooks.revision]\ncolumn = \"trip_id\"\npattern = '_(?<revision>\\d{6})(?:_|$)'\ndate_format = \"%y%m%d\"\n",
     );
     let calls: Vec<_> = abc("x_260101", ["10:00", "10:06", "10:10"])
@@ -273,17 +281,28 @@ fn ovl_r082_the_newer_revision_wins() {
         .collect();
     let feed = trip_feed(
         &profile,
-        &[("r", "5", 3)],
-        &[("r", "x_260101", ""), ("r", "y_260201", "")],
+        &[("r", "X", 3)],
+        &[("r", "x_260101", "1"), ("r", "y_260201", "1")],
         &calls,
-        "",
+        "r,1,100005\n",
     );
-    let (t, _, codes) = applied(&base.t, vec![(&profile, feed)]);
-    assert!(codes.contains(&"overlay_newer_source_selected".to_owned()));
+    let (t, overlaid, codes) = applied(&base.t, vec![(&profile, feed)]);
+    assert!(!codes.contains(&"overlay_fact_conflict".to_owned()));
+    assert!(!codes.contains(&"overlay_newer_source_selected".to_owned()));
     assert_eq!(
         t.trips[trip].calls[1].departure.get().unwrap().seconds(),
+        10 * 3600 + 6 * 60
+    );
+    let added = trip_by_id(
+        &t,
+        overlay::added_trip("test-gtfs", "y_260201", &days(0..364)).as_str(),
+    )
+    .unwrap();
+    assert_eq!(
+        added.calls[1].departure.get().unwrap().seconds(),
         10 * 3600 + 7 * 60
     );
+    assert_eq!(overlaid.summary.trips_added, 1);
 }
 
 #[test]
@@ -359,7 +378,7 @@ fn ovl_r059_r088_a_trolleybus_part_moves_to_its_derived_route() {
 }
 
 #[test]
-fn ovl_r101_source_zones_apply_to_every_unzoned_call_at_the_place() {
+fn ovl_r101_r135_source_zones_apply_only_to_the_trips_of_their_source() {
     let (mut base, places, _, trip) = line_five();
     let other_route = base.route("100009", "9", Mode::Bus);
     let other = base.trip(
@@ -378,18 +397,22 @@ fn ovl_r101_source_zones_apply_to_every_unzoned_call_at_the_place() {
     );
     feed.stops[0].zone_id = Some("100".into());
     let (t, _, _) = applied(&base.t, vec![(&profile, feed)]);
-    for trip in [trip, other] {
-        let zones = t.trips[trip].calls[0]
+    let zones = |trip: jr_model::TripId, call: usize| {
+        t.trips[trip].calls[call]
             .zones
             .map(|z| t.zone_sets.get(z).to_vec())
-            .unwrap_or_default();
-        assert_eq!(zones.len(), 1);
-        assert_eq!(
-            (&*zones[0].code, zones[0].system.as_deref()),
-            ("100", Some("ids-jmk"))
-        );
-    }
-    assert!(t.trips[other].calls[1].zones.is_none());
+            .unwrap_or_default()
+    };
+    // The bound trip takes the source's zone at the place ...
+    let bound = zones(trip, 0);
+    assert_eq!(bound.len(), 1);
+    assert_eq!(
+        (&*bound[0].code, bound[0].system.as_deref()),
+        ("100", Some("ids-jmk"))
+    );
+    // ... a national trip the source does not run, at the same place, does not.
+    assert!(zones(other, 0).is_empty());
+    assert!(zones(other, 1).is_empty());
 }
 
 #[test]

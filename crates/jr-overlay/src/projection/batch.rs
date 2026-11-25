@@ -1,5 +1,5 @@
-//! The batch of edits (OVL-R091, R098, R101, R102, R104, R111, R117, R130), assembled in the
-//! order stated in `projection.rs`.
+//! The batch of edits (OVL-R091, R098, R101, R102, R104, R111, R117, R130, R135), assembled in
+//! the order stated in `projection.rs`.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
@@ -46,11 +46,11 @@ pub const OVL_R098: Rule = Rule {
 };
 
 /// With the zones hook, a source group's distinct zone IDs are zones of the hook's system at
-/// its place, given to every call at the place that has no zones of its own, on every output
-/// trip (verdict Q10: place-level, B6 recorded).
+/// its place, given to every call at the place that has no zones of its own, on the output
+/// trips the source states (R135).
 pub const OVL_R101: Rule = Rule {
     id: "OVL-R101",
-    summary: "a source's stop zones apply to every unzoned call at the place",
+    summary: "a source's stop zones apply to the unzoned calls at the place of its trips",
 };
 
 /// A derived route runs under its source route's agency, added as
@@ -91,8 +91,21 @@ pub const OVL_R130: Rule = Rule {
     summary: "stated times that would run backwards are not taken",
 };
 
+/// A source's place zones (R101) go only to the output trips it states: the parts of base
+/// trips whose selection it is one of the sources of, and the trips added from it (any member
+/// of the addition). Where several of a trip's sources zone one place, the first source in
+/// source order gives the zones. A national trip no source binds, and the trips of another
+/// source, keep their calls unzoned.
+///
+/// The zones are a source's tariff (IDS JMK's), which says nothing of trips the source does not
+/// run (B6, verdict Q10: F# gave them to every call at the place, PID and national trips too).
+pub const OVL_R135: Rule = Rule {
+    id: "OVL-R135",
+    summary: "a source's place zones apply only to the output trips that source states",
+};
+
 pub const RULES: &[Rule] = &[
-    OVL_R091, OVL_R098, OVL_R101, OVL_R102, OVL_R104, OVL_R111, OVL_R117, OVL_R130,
+    OVL_R091, OVL_R098, OVL_R101, OVL_R102, OVL_R104, OVL_R111, OVL_R117, OVL_R130, OVL_R135,
 ];
 
 /// One output trip: a part of a base trip, an unchanged base trip, or an addition.
@@ -374,8 +387,8 @@ pub fn build(
         handles.posts[index] = Some(handle);
     }
 
-    // R101: zones per place.
-    let mut zones: HashMap<PlaceId, Box<[Zone]>> = HashMap::new();
+    // R101: zones per source and place.
+    let mut zones: HashMap<(u32, PlaceId), Box<[Zone]>> = HashMap::new();
     for (source_index, source) in prepared.sources.iter().enumerate() {
         let Some(hook) = &source.profile.hooks.zones else {
             continue;
@@ -398,7 +411,7 @@ pub fn build(
             };
             if let Some(place) = place {
                 zones.insert(
-                    place,
+                    (source_index as u32, place),
                     group
                         .zones
                         .iter()
@@ -411,25 +424,34 @@ pub fn build(
             }
         }
     }
-    let zone_calls =
-        |b: &mut EditBuilder<'_>, trip: TripId, calls: &[Call], summary: &mut Summary| {
-            for call in calls {
-                if call.passenger
-                    && call.zones.is_none()
-                    && let Some(set) = zones.get(&call.place)
-                {
-                    b.push(
-                        OVL_R101,
-                        jr_model::Edit::SetCallZones {
-                            trip,
-                            sequence: call.sequence,
-                            zones: set.clone(),
-                        },
-                    );
-                    summary.calls_zoned += 1;
-                }
+    // R135: only on the output trips of the zoning source.
+    let zone_calls = |b: &mut EditBuilder<'_>,
+                      trip: TripId,
+                      calls: &[Call],
+                      sources: &[u32],
+                      summary: &mut Summary| {
+        if zones.is_empty() || sources.is_empty() {
+            return;
+        }
+        for call in calls {
+            if call.passenger
+                && call.zones.is_none()
+                && let Some(set) = sources
+                    .iter()
+                    .find_map(|&source| zones.get(&(source, call.place)))
+            {
+                b.push(
+                    OVL_R101,
+                    jr_model::Edit::SetCallZones {
+                        trip,
+                        sequence: call.sequence,
+                        zones: set.clone(),
+                    },
+                );
+                summary.calls_zoned += 1;
             }
-        };
+        }
+    };
 
     // Base trips, in handle order.
     let plan_of: HashMap<u32, &TripPlan> = plans.iter().map(|p| (p.base, p)).collect();
@@ -440,7 +462,6 @@ pub fn build(
         let index = index as u32;
         let trip = &t.trips[base_trip.trip];
         let Some(plan) = plan_of.get(&index) else {
-            zone_calls(&mut b, base_trip.trip, &trip.calls, &mut summary);
             outputs.push(output(
                 trip.id.to_string(),
                 base_trip.trip,
@@ -546,7 +567,11 @@ pub fn build(
                     },
                 );
             }
-            zone_calls(&mut b, handle, &calls, &mut summary);
+            let sources = part
+                .selection
+                .as_ref()
+                .map_or(&[][..], |selection| &selection.sources[..]);
+            zone_calls(&mut b, handle, &calls, sources, &mut summary);
             outputs.push(output(
                 part.id.as_ref().unwrap_or(&trip.id).to_string(),
                 handle,
@@ -647,7 +672,10 @@ pub fn build(
             },
         );
         summary.trips_added += 1;
-        zone_calls(&mut b, handle, &calls, &mut summary);
+        let mut sources: Vec<u32> = addition.members.iter().map(|&(s, _)| s).collect();
+        sources.sort_unstable();
+        sources.dedup();
+        zone_calls(&mut b, handle, &calls, &sources, &mut summary);
         let mut out = output(
             addition.id.to_string(),
             handle,

@@ -79,7 +79,7 @@ pub enum OverlayError {
 
 /// Every rule the engine implements, stage by stage.
 pub fn rules() -> impl Iterator<Item = jr_model::Rule> {
-    [prepare::RULES, authority::RULES]
+    [profile::RULES, prepare::RULES, authority::RULES]
         .into_iter()
         .chain(matching::RULES.iter().copied())
         .chain(projection::RULES.iter().copied())

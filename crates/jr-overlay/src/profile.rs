@@ -1,7 +1,7 @@
 //! Source and base profiles (`policy/overlay/*.toml`, verdicts Q2 and Q8). Each source is
-//! governed by its own profile; the shipped profiles state the values that are effective in a
-//! combined F# run today (`docs/rules/overlay.md` section 2.3), so the engine decides as F# does
-//! while the files say what really applies. A profile error is fatal (verdict Q11).
+//! governed by its own profile, which states that source's own settings (the F# per-source
+//! policies, `docs/rules/overlay.md` section 2.3, not the merged template of a combined F# run:
+//! B2 fixed). A profile error is fatal (verdict Q11).
 
 mod base;
 mod source;
@@ -14,6 +14,9 @@ pub use source::{
     RoutePolicy, SourceProfile, StopGroupHook, StopPolicy, TripPolicy, ZonesHook,
 };
 pub use vocabulary::{Capability, RouteTier, TripTier};
+
+/// The rules of the profiles.
+pub const RULES: &[jr_model::Rule] = &[source::OVL_R136];
 
 const PID: &str = include_str!("../../../policy/overlay/pid.toml");
 const IDS_JMK: &str = include_str!("../../../policy/overlay/ids-jmk.toml");

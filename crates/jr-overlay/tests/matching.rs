@@ -1,4 +1,4 @@
-//! Trip matching (OVL-R065–R075).
+//! Trip matching (OVL-R065–R075, R133, R134).
 
 mod support;
 
@@ -250,7 +250,9 @@ fn ovl_r071_equivalent_ties_expand_distinct_ones_stay_ambiguous() {
     assert!(codes.contains(&"trip_validity_unresolved".to_owned()));
 }
 
-/// Base trips X (line 100005) and Y (line 100006), identical; source trips claiming lines.
+/// Base trips X (line 100005) and Y (line 100006), identical; source trip `free` runs exactly
+/// their times on route `5` (both are its equal-best candidates, of two meanings), and each
+/// claim is a source trip asserting a line, a minute off at the middle call (a weaker tier).
 fn availability_case(claims: &[(&str, &str)]) -> (Matches, Vec<String>) {
     let (mut base, places, routes) = base_with(&["100005", "100006"]);
     abc(&mut base, routes[0], &places, ["10:00", "10:05", "10:10"]);
@@ -265,11 +267,8 @@ fn availability_case(claims: &[(&str, &str)]) -> (Matches, Vec<String>) {
         let route = route_ids[index];
         routes.push((route, "Q", 3));
         trips.push((route, trip, "1"));
-        calls.extend(source_abc(trip, ["10:00", "10:05", "10:10"]));
-        companion.push_str(&format!(
-            "{route},1,{line}
-"
-        ));
+        calls.extend(source_abc(trip, ["10:00", "10:06", "10:10"]));
+        companion.push_str(&format!("{route},1,{line}\n"));
     }
     let feed = trip_feed(&profile, &routes, &trips, &calls, &companion);
     run_matching(&base.t, &profile, feed)
@@ -296,6 +295,124 @@ fn ovl_r075_an_ambiguous_date_whose_candidates_are_all_claimed_is_a_capacity_gap
     assert!(matches.ambiguous.iter().all(|p| p.capacity_gap));
     assert!(matches.flags[0][0].capacity_gap);
     assert!(codes.contains(&"base_snapshot_capacity_gap".to_owned()));
+}
+
+#[test]
+fn ovl_r133_a_base_trip_departing_beyond_the_tolerance_is_not_a_candidate() {
+    let (mut base, places, routes) = base_with(&["100005"]);
+    abc(&mut base, routes[0], &places, ["10:00", "10:05", "10:10"]);
+    let mut profile = generic_profile("");
+    profile.trips.maximum_first_departure_delta_seconds = 420;
+    // Eight minutes off: beyond seven.
+    let calls = source_abc("s1", ["10:08", "10:13", "10:18"]);
+    let feed = trip_feed(&profile, &[("r", "5", 3)], &[("r", "s1", "")], &calls, "");
+    let (matches, codes) = run_matching(&base.t, &profile, feed);
+    assert!(matches.bindings.is_empty());
+    assert_eq!(
+        matches.unmatched[0].code,
+        "trip_departure_deviation_exceeded"
+    );
+    assert!(codes.contains(&"trip_departure_deviation_exceeded".to_owned()));
+    // Seven minutes off: a candidate.
+    let calls = source_abc("s1", ["10:07", "10:12", "10:17"]);
+    let feed = trip_feed(&profile, &[("r", "5", 3)], &[("r", "s1", "")], &calls, "");
+    let (matches, _) = run_matching(&base.t, &profile, feed);
+    assert_eq!(matches.bindings.len(), 1);
+    assert_eq!(matches.bindings[0].dates, days(0..364));
+}
+
+/// Bindings as (source trip ID, base trip index, number of dates), sorted.
+fn assigned(matches: &Matches, ids: &[&str]) -> Vec<(String, u32, usize)> {
+    let mut found: Vec<_> = matches
+        .bindings
+        .iter()
+        .map(|b| {
+            (
+                ids[b.trip as usize].to_owned(),
+                b.candidate.base_trip,
+                b.dates.count(),
+            )
+        })
+        .collect();
+    found.sort();
+    found
+}
+
+#[test]
+fn ovl_r134_a_base_trip_goes_to_the_nearest_source_trip_and_the_other_moves_on() {
+    // Base trips at 10:00 and 10:10; both source trips are nearest to 10:00.
+    let (mut base, places, routes) = base_with(&["100005"]);
+    abc(&mut base, routes[0], &places, ["10:00", "10:05", "10:10"]);
+    abc(&mut base, routes[0], &places, ["10:10", "10:15", "10:20"]);
+    let profile = generic_profile("");
+    let near = source_abc("near", ["10:01", "10:06", "10:11"]);
+    let next = source_abc("next", ["10:03", "10:08", "10:13"]);
+    let expected = vec![("near".to_owned(), 0, 364), ("next".to_owned(), 1, 364)];
+    // In either input order, on one thread or several: the same assignment.
+    for order in [["near", "next"], ["next", "near"]] {
+        let calls: Vec<_> = if order[0] == "near" {
+            near.iter().chain(&next).copied().collect()
+        } else {
+            next.iter().chain(&near).copied().collect()
+        };
+        let trips: Vec<_> = order.iter().map(|&trip| ("r", trip, "")).collect();
+        for threads in [1, 4] {
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .unwrap();
+            let feed = trip_feed(&profile, &[("r", "5", 3)], &trips, &calls, "");
+            let (matches, codes) = pool.install(|| run_matching(&base.t, &profile, feed));
+            assert_eq!(assigned(&matches, &order), expected);
+            assert!(!codes.contains(&"base_snapshot_capacity_gap".to_owned()));
+        }
+    }
+}
+
+#[test]
+fn ovl_r134_with_nothing_left_the_tied_source_trip_is_a_capacity_gap() {
+    let (mut base, places, routes) = base_with(&["100005"]);
+    abc(&mut base, routes[0], &places, ["10:00", "10:05", "10:10"]);
+    // Equal ranks: the source trip ID decides.
+    let profile = generic_profile("");
+    let calls: Vec<_> = source_abc("b", ["10:00", "10:06", "10:10"])
+        .into_iter()
+        .chain(source_abc("a", ["10:00", "10:06", "10:10"]))
+        .collect();
+    let feed = trip_feed(
+        &profile,
+        &[("r", "5", 3)],
+        &[("r", "b", ""), ("r", "a", "")],
+        &calls,
+        "",
+    );
+    let (matches, codes) = run_matching(&base.t, &profile, feed);
+    assert_eq!(
+        assigned(&matches, &["b", "a"]),
+        vec![("a".to_owned(), 0, 364)]
+    );
+    assert!(matches.flags[0][0].capacity_gap);
+    assert!(codes.contains(&"base_snapshot_capacity_gap".to_owned()));
+    // Equal ranks: the newer revision decides before the ID.
+    let profile = generic_profile(
+        "[hooks.revision]\ncolumn = \"trip_id\"\npattern = '_(?<revision>\\d{6})(?:_|$)'\ndate_format = \"%y%m%d\"\n",
+    );
+    let calls: Vec<_> = source_abc("a_260101", ["10:00", "10:06", "10:10"])
+        .into_iter()
+        .chain(source_abc("b_260201", ["10:00", "10:06", "10:10"]))
+        .collect();
+    let feed = trip_feed(
+        &profile,
+        &[("r", "5", 3)],
+        &[("r", "a_260101", ""), ("r", "b_260201", "")],
+        &calls,
+        "",
+    );
+    let (matches, _) = run_matching(&base.t, &profile, feed);
+    assert_eq!(
+        assigned(&matches, &["a_260101", "b_260201"]),
+        vec![("b_260201".to_owned(), 0, 364)]
+    );
 }
 
 #[test]
