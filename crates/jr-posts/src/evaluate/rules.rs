@@ -275,6 +275,16 @@ pub const POST_R121: Rule = Rule {
     summary: "estimated location = (stop, hypothesis)",
 };
 
+/// On request (`[jdf.posts] training`), the learned scorer's rows are reported as they were
+/// scored (`post_scorer_rows`: context, stop, hypothesis, post, area, movement, position and
+/// the stage-1 features) with the published calls of each context (`post_context_calls`): the
+/// scorer's training table comes from the estimator that uses it (verdict Q14). Nothing is
+/// decided differently.
+pub const POST_R141: Rule = Rule {
+    id: "POST-R141",
+    summary: "the learned scorer's rows and each context's calls are reported for training",
+};
+
 /// An authored post takes a position when its contexts' family decisions name exactly one
 /// hypothesis, unanimously if the policy says so, each above the authored score and margin.
 /// Whether an unrelated unlabelled context at the stop published that hypothesis does not
@@ -345,6 +355,7 @@ pub const RULES: &[Rule] = &[
     POST_R120,
     POST_R121,
     POST_R122,
+    POST_R141,
     POST_R123,
     POST_R180,
     POST_R181,

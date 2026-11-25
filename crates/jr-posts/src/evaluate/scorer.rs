@@ -31,28 +31,44 @@ pub enum Feature {
     ServiceEdgeCount,
 }
 
+/// The model document's feature names.
+const FEATURE_NAMES: [(&str, Feature); 17] = [
+    ("side", Feature::Side),
+    ("alignment", Feature::Alignment),
+    ("proximity", Feature::Proximity),
+    ("corridor_distance", Feature::CorridorDistance),
+    ("routed_fit", Feature::RoutedFit),
+    (
+        "routed_excess_metres_capped",
+        Feature::RoutedExcessMetresCapped,
+    ),
+    ("excess_minus_context_min", Feature::ExcessMinusContextMin),
+    ("eligible", Feature::Eligible),
+    ("has_local_ref", Feature::HasLocalRef),
+    ("is_bay", Feature::IsBay),
+    ("post_support", Feature::PostSupport),
+    ("post_support_deficit", Feature::PostSupportDeficit),
+    ("is_tram", Feature::IsTram),
+    ("is_trolleybus", Feature::IsTrolleybus),
+    ("anchor_previous_missing", Feature::AnchorPreviousMissing),
+    ("anchor_next_missing", Feature::AnchorNextMissing),
+    ("service_edge_count", Feature::ServiceEdgeCount),
+];
+
 impl Feature {
     pub fn parse(name: &str) -> Option<Feature> {
-        Some(match name {
-            "side" => Feature::Side,
-            "alignment" => Feature::Alignment,
-            "proximity" => Feature::Proximity,
-            "corridor_distance" => Feature::CorridorDistance,
-            "routed_fit" => Feature::RoutedFit,
-            "routed_excess_metres_capped" => Feature::RoutedExcessMetresCapped,
-            "excess_minus_context_min" => Feature::ExcessMinusContextMin,
-            "eligible" => Feature::Eligible,
-            "has_local_ref" => Feature::HasLocalRef,
-            "is_bay" => Feature::IsBay,
-            "post_support" => Feature::PostSupport,
-            "post_support_deficit" => Feature::PostSupportDeficit,
-            "is_tram" => Feature::IsTram,
-            "is_trolleybus" => Feature::IsTrolleybus,
-            "anchor_previous_missing" => Feature::AnchorPreviousMissing,
-            "anchor_next_missing" => Feature::AnchorNextMissing,
-            "service_edge_count" => Feature::ServiceEdgeCount,
-            _ => return None,
-        })
+        FEATURE_NAMES
+            .iter()
+            .find(|(known, _)| *known == name)
+            .map(|&(_, feature)| feature)
+    }
+
+    pub fn name(self) -> &'static str {
+        FEATURE_NAMES
+            .iter()
+            .find(|(_, feature)| *feature == self)
+            .map(|&(name, _)| name)
+            .expect("every feature is named")
     }
 }
 
@@ -88,6 +104,11 @@ pub struct Model {
 }
 
 impl Model {
+    /// The stage-1 feature names, in model order.
+    pub fn feature_names(&self) -> Vec<&'static str> {
+        self.features.iter().map(|feature| feature.name()).collect()
+    }
+
     /// Fails when a stage-1 feature is not one the evaluator computes (F#: "Learned scorer
     /// feature … is not available in JrUtil").
     pub fn new(model: &post_policy::Model) -> Result<Model, PolicyError> {

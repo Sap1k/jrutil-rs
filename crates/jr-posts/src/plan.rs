@@ -141,6 +141,8 @@ pub(crate) struct PlanCounts {
 /// What the plan returns.
 #[derive(Debug)]
 pub(crate) struct Planned {
+    /// POST-R141, on request.
+    pub context_calls: Option<ReportTable>,
     pub decisions: ReportTable,
     pub candidates: ReportTable,
     pub counts: PlanCounts,
@@ -162,6 +164,7 @@ pub(crate) fn plan(
     constants: &Constants,
     builder: &mut EditBuilder<'_>,
     diagnostics: &mut Diagnostics,
+    training: bool,
 ) -> Planned {
     let index = FactIndex::new(facts);
     let place_of: HashMap<u64, PlaceId> = facts.stops.iter().map(|s| (s.number, s.place)).collect();
@@ -282,11 +285,20 @@ pub(crate) fn plan(
             Some((&*pack.contexts.context_id[d.context as usize], point.0))
         })
         .collect();
+    let mut context_calls = Vec::new();
     for trip in &facts.trips {
         let Some(pattern) = trip_pattern(timetable, &index, trip, &constants.capture.modes) else {
             continue;
         };
         for call in &pattern.calls {
+            // POST-R141.
+            if training && let Some(row) = timetable.trips.get(trip.trip) {
+                context_calls.push(vec![
+                    row.id.to_string(),
+                    row.calls[call.call].sequence.to_string(),
+                    call.context_id.to_string(),
+                ]);
+            }
             if call.authored.is_some() {
                 continue;
             }
@@ -335,6 +347,11 @@ pub(crate) fn plan(
     }
 
     Planned {
+        context_calls: training.then(|| ReportTable {
+            name: "post_context_calls",
+            header: vec!["trip_id", "sequence", "context_id"],
+            rows: context_calls,
+        }),
         decisions: decisions_table(pack, decisions, &points),
         candidates: ReportTable {
             name: "post_candidates",

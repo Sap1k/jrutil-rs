@@ -106,18 +106,20 @@ One phase at a time; each phase lands as one or two coarse commits.
    correct 72.43 % → 73.51 % (+17,734 calls), wrong 3.15 % → 3.19 %, no estimate 20.30 % →
    19.19 %; the wrong share of estimated calls stays 3.95 %.
 
-   **Not done: retraining.** The scorer's training chain (`jrutil/scripts/post-scorer`) still
-   runs on F# tools: regional training captures with the region box and the regional catalogues
-   excluded (POST-R005, R047, not ported), the context-call export, the evaluator feature export
-   (`jdf-export-post-features`) and the overlay's call traces (the Rust overlay writes none,
-   verdict Q9). Retraining therefore needs, in order: (a) the training capture options in
-   `jr-posts` capture; (b) a training-table export from the Rust evaluator (the 17 features of
-   `FEATURE_COLUMNS`, context and stop IDs, the baseline decision); (c) labels from an overlay
-   package as `tools/golden/posts_accuracy.py` reads them, per context the majority regional
-   post; (d) `post_scorer.model crossval`/`train` on PID and IDS JMK, evaluated on held-out
-   stops and on Ústecký kraj; (e) the reviewed list replacing the pack statistic (Q11) in the
-   same model version; (f) a national comparison before the new `learned-v2.json` ships. The
-   graph fixes already clear the accuracy bar with the current model, so nothing waits on it.
+   **Retraining: done, not adopted.** The training table now comes from the Rust estimator
+   (POST-R141, verdict Q14): `[jdf.posts] training = true` reports the scorer's rows exactly as
+   scored and each context's calls; `tools/posts/training_table.py` labels them from an overlay
+   package (the scorer README's rules) and adds the shipped model's decisions as the baseline;
+   `tools/posts/train_scorer.py` trains with `post_scorer` (folds 2-4 by stop), calibrates on
+   fold 1 and compares on fold 0, and writes a policy only when the new model has more correct
+   decisions and no higher wrong share. Run on the golden slice captured without PID.csv,
+   MPVNet_PID.csv and IDSJMK.csv (the leakage guard): 69,244 labelled contexts. Calibrated to
+   the shipped model's precision on fold 1, the retrained model on the test fold: 11,158 of
+   12,427 published correct (0.898) against the shipped 9,961 of 10,575 (0.942); worse at
+   complex stops (0.83 against 0.94) and stops with bays (0.73 against 0.86). It is not better
+   by the bar, so `learned-v1.json` stays. More regions' labels (the original model was trained
+   on national regional captures) are the way to a better model; the reviewed list (Q11) goes
+   with that next model.
 7. *Optional, not scheduled:* M5 (reading the raw OSM snapshot) and M6 (SŽ přípoje XLSX, OSM
    track→platform, foreign rail GTFS).
 

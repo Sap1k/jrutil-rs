@@ -725,6 +725,7 @@ fn estimate_posts(
                 router: RouterEvidence::Rust,
             },
             cache: cache.as_mut(),
+            training: spec.training,
         },
         diagnostics,
     )?;

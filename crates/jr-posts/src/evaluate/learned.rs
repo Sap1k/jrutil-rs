@@ -106,6 +106,25 @@ struct Choice<'a> {
     modes: Vec<&'a str>,
 }
 
+/// One scored candidate as the scorer saw it (POST-R141): what its training table holds.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TrainingRow {
+    pub context_id: String,
+    pub stop: u64,
+    pub hypothesis_id: String,
+    pub post_id: String,
+    pub area_id: String,
+    pub is_platform: bool,
+    pub previous_stop: Option<String>,
+    pub next_stop: Option<String>,
+    pub stop_post_count: usize,
+    pub mode: String,
+    pub latitude: f64,
+    pub longitude: f64,
+    /// The stage-1 features in the model's order.
+    pub features: Vec<f64>,
+}
+
 /// The stop's learned decisions by context row (R102–R108).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn decide(
@@ -117,6 +136,7 @@ pub(crate) fn decide(
     stop: u64,
     points: &[Point],
     consolidated: &Consolidated,
+    training: Option<&mut Vec<TrainingRow>>,
 ) -> HashMap<u32, Decision> {
     let contexts = &pack.contexts;
     let hypotheses = &consolidated.hypotheses;
@@ -379,6 +399,40 @@ pub(crate) fn decide(
         .iter()
         .map(|(context, _)| (contexts.context_id[*context as usize].to_string(), *context))
         .collect();
+    // POST-R141: the rows the scorer scores, for its training table.
+    if let Some(training) = training {
+        let position: HashMap<&str, (f64, f64)> = choices
+            .iter()
+            .map(|choice| {
+                (
+                    hypotheses[choice.hypothesis].id.as_str(),
+                    (choice.latitude, choice.longitude),
+                )
+            })
+            .collect();
+        let key_of: HashMap<&str, &ContextKey> =
+            keys.iter().map(|key| (key.context.as_str(), key)).collect();
+        for candidate in &candidates {
+            let key = key_of[candidate.context.as_str()];
+            let (latitude, longitude) = position[candidate.hypothesis.as_str()];
+            let mode = &*contexts.mode[rows_by_id[&candidate.context] as usize];
+            training.push(TrainingRow {
+                context_id: candidate.context.clone(),
+                stop,
+                hypothesis_id: candidate.hypothesis.clone(),
+                post_id: candidate.post.clone(),
+                area_id: candidate.area.clone(),
+                is_platform: candidate.is_platform,
+                previous_stop: key.previous.clone(),
+                next_stop: key.next.clone(),
+                stop_post_count: key.stop_post_count,
+                mode: mode.to_owned(),
+                latitude,
+                longitude,
+                features: candidate.features.clone(),
+            });
+        }
+    }
     scorer::score_stop(model, &keys, candidates, learned)
         .into_iter()
         .filter_map(|decision| {

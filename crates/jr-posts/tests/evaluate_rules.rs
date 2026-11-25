@@ -683,3 +683,33 @@ fn a_pack_that_breaks_an_invariant_is_not_evaluated() {
     pack.contexts.movement_family_id[0] = "movement-family:corrupt".into();
     assert!(evaluate::evaluate(&pack, &heuristic()).is_err());
 }
+
+#[test]
+fn post_r141_training_rows_are_the_scored_candidates_and_change_no_decision() {
+    let points = vec![
+        point("a", 0.0, 0.0, vec![osm(1)]),
+        point("b", 0.0, 30.0, vec![osm(2)]),
+    ];
+    let pack = pack(
+        &[(STOP, points)],
+        vec![context(
+            STOP,
+            "L1",
+            vec![variant("in", vec![good("f:R", 3.0), left("g:L", 3.0)])],
+        )],
+    );
+    let policy = learned(-10.0, 0.9, Some(0.7));
+    let plain = run(&pack, &policy);
+    let with_rows = evaluate::evaluate_with(&pack, &policy, true).expect("evaluates");
+    assert_eq!(plain.contexts, with_rows.contexts);
+    assert!(plain.training.is_empty());
+    assert_eq!(
+        with_rows.training.len(),
+        2,
+        "one row per candidate hypothesis"
+    );
+    for row in &with_rows.training {
+        assert_eq!(row.stop, STOP);
+        assert_eq!(row.features.len(), 1, "the test model's one feature");
+    }
+}

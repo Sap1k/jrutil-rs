@@ -30,6 +30,8 @@ pub struct EstimateInput<'a> {
     pub identity: PackIdentity,
     /// Routed evidence kept between builds (the capture's); the caller reads its counts.
     pub cache: Option<&'a mut ContextCache>,
+    /// Report the scorer's training rows and each context's calls (POST-R141).
+    pub training: bool,
 }
 
 #[derive(Debug)]
@@ -102,13 +104,14 @@ pub fn estimate(
         identity: input.identity,
         cache: input.cache,
     });
-    let mut estimated = estimate_from_pack(
+    let mut estimated = estimate_from_pack_with(
         input.timetable,
         input.facts,
         captured.pack,
         input.policy,
         input.registry,
         diagnostics,
+        input.training,
     )?;
     estimated.summary.capture = captured.counts;
     Ok(estimated)
@@ -124,7 +127,20 @@ pub fn estimate_from_pack(
     registry: &[registry::Post],
     diagnostics: &mut Diagnostics,
 ) -> Result<Estimated, EstimateError> {
-    let decisions = evaluate::evaluate(&pack, policy)?;
+    estimate_from_pack_with(timetable, facts, pack, policy, registry, diagnostics, false)
+}
+
+/// [`estimate_from_pack`], with the training reports when `training` is set (POST-R141).
+pub fn estimate_from_pack_with(
+    timetable: &Timetable,
+    facts: &PostFacts,
+    pack: Pack,
+    policy: &EvaluationPolicy,
+    registry: &[registry::Post],
+    diagnostics: &mut Diagnostics,
+    training: bool,
+) -> Result<Estimated, EstimateError> {
+    let decisions = evaluate::evaluate_with(&pack, policy, training)?;
     let mut builder = EditBuilder::new(timetable, PASS);
     let planned = plan::plan(
         timetable,
@@ -135,6 +151,7 @@ pub fn estimate_from_pack(
         &policy.constants,
         &mut builder,
         diagnostics,
+        training,
     );
     let counts = &decisions.counts;
     let summary = Summary {
@@ -159,7 +176,60 @@ pub fn estimate_from_pack(
     Ok(Estimated {
         edits: builder.finish(),
         pack: Some(pack),
-        reports: vec![planned.decisions, planned.candidates],
+        reports: [planned.decisions, planned.candidates]
+            .into_iter()
+            .chain(planned.context_calls)
+            .chain(training.then(|| scorer_rows(&decisions.training, policy)))
+            .collect(),
         summary,
     })
+}
+
+/// POST-R141: the scorer's rows as a table, the features named as the model names them.
+fn scorer_rows(rows: &[evaluate::TrainingRow], policy: &EvaluationPolicy) -> ReportTable {
+    let feature_names: Vec<&'static str> = match &policy.scorer {
+        ScorerChoice::Learned(model) => model.feature_names(),
+        ScorerChoice::Heuristic => Vec::new(),
+    };
+    let mut header = vec![
+        "context_id",
+        "stop_id",
+        "hypothesis_id",
+        "post_id",
+        "area_id",
+        "is_platform",
+        "previous_stop",
+        "next_stop",
+        "stop_post_count",
+        "mode",
+        "latitude",
+        "longitude",
+    ];
+    header.extend(feature_names);
+    let rows = rows
+        .iter()
+        .map(|row| {
+            let mut cells = vec![
+                row.context_id.clone(),
+                row.stop.to_string(),
+                row.hypothesis_id.clone(),
+                row.post_id.clone(),
+                row.area_id.clone(),
+                u8::from(row.is_platform).to_string(),
+                row.previous_stop.clone().unwrap_or_default(),
+                row.next_stop.clone().unwrap_or_default(),
+                row.stop_post_count.to_string(),
+                row.mode.clone(),
+                row.latitude.to_string(),
+                row.longitude.to_string(),
+            ];
+            cells.extend(row.features.iter().map(f64::to_string));
+            cells
+        })
+        .collect();
+    ReportTable {
+        name: "post_scorer_rows",
+        header,
+        rows,
+    }
 }

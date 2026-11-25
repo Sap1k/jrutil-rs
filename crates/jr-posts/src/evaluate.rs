@@ -23,6 +23,8 @@ mod consolidate;
 mod geometry;
 mod heuristic;
 mod learned;
+
+pub use learned::TrainingRow;
 mod policy;
 mod replay;
 mod rules;
@@ -223,6 +225,8 @@ pub struct Decisions {
     /// Positioned authored posts by (stop, key).
     pub authored_positions: Vec<AuthoredPosition>,
     pub counts: Counts,
+    /// The learned scorer's rows, when asked for ([`evaluate_with`], POST-R141).
+    pub training: Vec<learned::TrainingRow>,
 }
 
 impl Decisions {
@@ -311,6 +315,7 @@ struct StopResult {
     stop: StopDecisions,
     contexts: Vec<ContextDecision>,
     merges: usize,
+    training: Vec<learned::TrainingRow>,
 }
 
 fn evaluate_stop(
@@ -319,7 +324,9 @@ fn evaluate_stop(
     facts: &learned::ObservationFacts,
     index: &Index,
     stop_index: usize,
+    training: bool,
 ) -> StopResult {
+    let mut training_rows = Vec::new();
     let (stop, context_range, point_range) = index.stops[stop_index].clone();
     let settings = &policy.settings;
     let constants = &policy.constants;
@@ -344,6 +351,7 @@ fn evaluate_stop(
             stop,
             &points,
             &consolidated,
+            training.then_some(&mut training_rows),
         )),
         ScorerChoice::Heuristic => None,
     };
@@ -473,6 +481,7 @@ fn evaluate_stop(
         },
         contexts: decisions,
         merges: consolidated.merges,
+        training: training_rows,
     }
 }
 
@@ -538,6 +547,16 @@ fn authored_positions(
 /// Decides every context of a pack. The pack is checked first ([`post_evidence::check`]);
 /// a pack [`post_evidence::read`] returned passes.
 pub fn evaluate(pack: &Pack, policy: &EvaluationPolicy) -> Result<Decisions, EvaluateError> {
+    evaluate_with(pack, policy, false)
+}
+
+/// [`evaluate`], also returning the learned scorer's rows in [`Decisions::training`] when
+/// `training` is set (POST-R141). The decisions are the same either way.
+pub fn evaluate_with(
+    pack: &Pack,
+    policy: &EvaluationPolicy,
+    training: bool,
+) -> Result<Decisions, EvaluateError> {
     post_evidence::check(pack)?;
     let index = index(pack);
     let facts = match policy.scorer {
@@ -546,7 +565,7 @@ pub fn evaluate(pack: &Pack, policy: &EvaluationPolicy) -> Result<Decisions, Eva
     };
     let results: Vec<StopResult> = (0..index.stops.len())
         .into_par_iter()
-        .map(|stop| evaluate_stop(pack, policy, &facts, &index, stop))
+        .map(|stop| evaluate_stop(pack, policy, &facts, &index, stop, training))
         .collect();
     let mut counts = Counts {
         candidate_stops: index.candidate_stops,
@@ -556,7 +575,9 @@ pub fn evaluate(pack: &Pack, policy: &EvaluationPolicy) -> Result<Decisions, Eva
     };
     let mut stops = Vec::with_capacity(results.len());
     let mut contexts = Vec::with_capacity(pack.contexts.len());
-    for result in results {
+    let mut training_rows = Vec::new();
+    for mut result in results {
+        training_rows.append(&mut result.training);
         counts.merges += result.merges;
         counts.hypotheses += result.stop.hypotheses.len();
         for family in &result.stop.families {
@@ -596,5 +617,6 @@ pub fn evaluate(pack: &Pack, policy: &EvaluationPolicy) -> Result<Decisions, Eva
         stops,
         authored_positions,
         counts,
+        training: training_rows,
     })
 }

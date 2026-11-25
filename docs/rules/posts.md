@@ -1922,6 +1922,11 @@ are exceptions; abstentions are silent except in the counters and the diagnostic
 - **Diagnostic:** the files.
 - **Proposed verdict:** port as `jrutil posts export` over a pack (training depends on its
   columns); ideally the same command writes the learned candidate table directly (Q14).
+- **Rust (2026-11-25, roadmap phase 6):** `[jdf.posts] training = true` makes the estimator
+  report the learned scorer's rows exactly as scored (`post_scorer_rows`: context, stop,
+  hypothesis, post, area, movement, position, the stage-1 features by model name) and each
+  context's published calls (`post_context_calls`). Labels and weights are joined from an
+  overlay package by `tools/posts/training_table.py`; the Python trainer reads the result.
 
 ### 3.12 The routing extract (Oběhy side and merge)
 

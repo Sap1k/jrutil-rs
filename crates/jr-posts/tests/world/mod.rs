@@ -235,6 +235,7 @@ impl World {
     pub fn estimate(&self, policy: &EvaluationPolicy, registry: &[Post]) -> Estimated {
         jr_posts::estimate(
             EstimateInput {
+                training: false,
                 timetable: &self.timetable,
                 facts: &self.facts,
                 graph: street(),

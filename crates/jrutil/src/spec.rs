@@ -135,6 +135,10 @@ pub struct PostsSpec {
     /// How many days an unused cache entry is kept (counted from `reference_date`).
     #[serde(default = "default_cache_retention_days")]
     pub cache_retention_days: u32,
+    /// Also report the scorer's training rows and each context's calls in `reports`
+    /// (POST-R141).
+    #[serde(default)]
+    pub training: bool,
 }
 
 fn default_cache_retention_days() -> u32 {
