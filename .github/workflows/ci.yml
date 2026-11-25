@@ -22,3 +22,13 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
       - run: cargo build --release --locked -p jrutil
+
+  post-scorer:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tools/posts
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.4.0  # no floating major tags since v8
+      - run: uv run --locked --group dev pytest -q

@@ -104,7 +104,9 @@ One phase at a time; each phase lands as one or two coarse commits.
    margin (B9, B10, B13). Golden slice, labelled accuracy over 1,636,191 calls with a known real
    post (baseline phase 5 with the old routing base, candidate phase 6 with the new one):
    correct 72.43 % → 73.51 % (+17,734 calls), wrong 3.15 % → 3.19 %, no estimate 20.30 % →
-   19.19 %; the wrong share of estimated calls stays 3.95 %.
+   19.19 %; the wrong share of estimated calls stays 3.95 %. These golden figures are not
+   comparable as a measure of the estimator (the regional catalogues the labels come from are
+   among the candidates; `docs/golden.md`).
 
    **Retraining: done, `learned-v2` shipped (2026-11-25).** The training table comes from the
    Rust estimator (POST-R141, verdict Q14): `[jdf.posts] training = true` reports the scorer's
@@ -123,8 +125,9 @@ One phase at a time; each phase lands as one or two coarse commits.
      298,498 of 315,944 (0.945): +8,102 correct, wrong share 5.18 % against 5.52 %. Better in both
      regions, at complex stops (0.944 against 0.935) and stops with bays (0.907 against 0.884).
    - **Golden slice** (catalogues kept, every labelled call overlay-bound in production): correct
-     73.51 % → 74.36 %, wrong 3.19 % → 3.50 %. Not the deciding measure: there the regional
-     catalogues are candidates and production publishes the overlay's real post.
+     73.51 % → 74.36 %, wrong 3.19 % → 3.50 %. Not comparable, like every golden posts figure:
+     there the regional catalogues are candidates and production publishes the overlay's real
+     post.
    - A first attempt on the golden slice alone (69,244 contexts) was not better; it was also
      judged against `learned-v1` thresholds calibrated on the test fold. The reviewed list (Q11)
      remains for a later model.

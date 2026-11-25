@@ -14,8 +14,12 @@ is known, the estimate is:
     wrong      farther than 35 m
     none       no estimated post (the call keeps the stop's unspecified point)
 
-The thresholds are those of the scorer's training labels (JrUtil scripts/post-scorer). With two
+The thresholds are those of the scorer's training labels (`tools/posts/README.md`). With two
 packages the transitions between them are printed as well.
+
+On the golden slice this is not a measure of the estimator: the regional catalogues the labels
+come from are among the candidates, so results are not comparable with the held-out test
+(`tools/posts/train_scorer.py`); see `docs/golden.md`.
 
 Needs pyarrow (the Oběhy environment has it: `uv run python posts_accuracy.py ...`).
 """

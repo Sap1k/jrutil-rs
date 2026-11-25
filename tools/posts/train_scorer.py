@@ -1,12 +1,10 @@
 """Retrain the learned post scorer on a jrutil-rs training table and judge it against the shipped
 model on stops neither model was fitted or calibrated on.
 
-Usage (from `jrutil/scripts/post-scorer`, whose `post_scorer` package this uses, with
-`PYTHONPATH=.`):
-    uv run --with pyarrow python <this> <candidates.parquet> <shipped policy.json> <output policy.json>
+Usage (from `tools/posts`):
+    uv run python train_scorer.py <candidates.parquet> <shipped policy.json> <output policy.json>
 
-The split follows the one the shipped model was made with (`post_scorer.model._split`): stops
-are hashed into five folds by `stable_fold`, fold 0 is the test, folds 1-4 train. The shipped
+The split follows the one the shipped model was made with: stops are hashed into five folds by `stable_fold`, fold 0 is the test, folds 1-4 train. The shipped
 model was fitted on folds 1-4 too, so on fold 0 neither model has seen a stop.
 
 * Thresholds: each training fold is scored by a model fitted on the other three (out of fold),

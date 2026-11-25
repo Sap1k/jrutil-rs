@@ -157,6 +157,14 @@ posts (`tools/golden/posts_accuracy.py`, 1,636,203 labelled calls):
 | F# | 72.59 % | 4.19 % | 3.34 % | 19.88 % |
 | jrutil-rs | 72.43 % | 4.13 % | 3.15 % | 20.30 % |
 
+**Not comparable (2026-11-25).** These numbers, and every golden posts comparison before
+it (phase 6, `learned-v2`), do not measure the estimator: the golden slice keeps the PID,
+MPV net PID and IDS JMK catalogues among the candidates, and those list every bay the labels
+come from, so the labels leak into the candidates. In production, too, every labelled call is
+bound by the overlay, which publishes the real post anyway. Judge the estimator by the held-out
+test of `tools/posts/train_scorer.py` (stops it was neither fitted nor calibrated on, captured
+without those catalogues).
+
 ### The national road comparison (2026-11-22/23)
 
 Made once, with the maintainer: the production build `obehy build --estimated-posts` with F#

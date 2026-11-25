@@ -42,7 +42,8 @@ Sources read in full:
   routing PBF`.
 - Python scorer: `jrutil/scripts/post-scorer/README.md`, `post_scorer/features.py`,
   `collective.py`, `golden.py`, the decision and threshold parts of `model.py`,
-  `run-regions.ps1` (arguments).
+  `run-regions.ps1` (arguments). The model, its posts and its training now live in
+  `tools/posts` (2026-11-25).
 - Oběhy (read-only): `repo/src/obehy/national_jdf.py` (build arguments, policy choice),
   `osm_snapshot.py` (filters, demand envelope, 560–910), `PROGRESS.md` (post-estimator status
   and timings), `STATIC_PIPELINE.md`, `BASE_PLAN.md` (section 6), `AGENTS.md`.

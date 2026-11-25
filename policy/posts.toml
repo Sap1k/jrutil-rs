@@ -3,7 +3,7 @@
 # docs/rules/posts.md. The per-build thresholds are not here: they are the policy document
 # (policy v2 + learned model, e.g. Oběhy's learned-v2.json), versioned with its model (POST-R004).
 # The [learned] values are part of the shipped model's contract: they must equal the values the
-# model was trained with (jrutil/scripts/post-scorer), so change them only with a new model.
+# model was trained with (tools/posts), so change them only with a new model.
 
 # The local metric of the evaluator ("equirect", section 3 conventions): metres per degree of
 # latitude and of longitude at the equator (scaled by the cosine of the mean latitude).

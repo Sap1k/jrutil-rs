@@ -5,11 +5,11 @@ Usage:
 
 <reports dir> is `[jdf.posts] reports` of a build with `training = true`. Capture it without
 the labelled regions' own catalogues (PID.csv, MPVNet_PID.csv, IDSJMK.csv): they list every bay
-of the region, and the labels would leak into the candidates (the scorer README's guard).
+of the region, and the labels would leak into the candidates (`README.md`, leakage guards).
 
 <overlay package> is a road package with the regional feeds overlaid, built on a base without
 estimated posts: for the calls a regional feed was bound to it states the real post. Labels
-follow the scorer README (`jrutil/scripts/post-scorer`):
+follow `README.md` here:
 
 * a context's real post is the majority regional post of its labelled calls (share >= 0.8,
   else the context is unlabelled);
@@ -22,7 +22,7 @@ The weight of a context is its number of published calls; `region` is the labell
 decision the shipped model made (the `post_decisions` report), so `post_scorer.model` compares
 a new model with it on the same stops. Authored contexts are left out: they are not scored.
 
-Needs polars and pyarrow (the post-scorer environment has both).
+Run from `tools/posts` with `uv run python training_table.py …`.
 """
 
 import collections
@@ -113,7 +113,6 @@ def main():
         if count / sum(counter.values()) >= MAJORITY_SHARE:
             majority[context] = post
 
-    labelled, y = [], []
     candidates_of = collections.defaultdict(list)
     for index, (context, latitude, longitude) in enumerate(
         rows.select("context_id", "latitude", "longitude").iter_rows()

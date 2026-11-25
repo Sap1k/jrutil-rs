@@ -3,3 +3,4 @@ target-*/
 /work/
 *.pyc
 __pycache__/
+.venv/
