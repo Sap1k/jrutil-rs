@@ -167,7 +167,7 @@ pub const POST_R089: Rule = Rule {
 /// contexts only; an unlabelled context the scorer saw no candidate for resolves to the
 /// centroid. Authored contexts keep the heuristic family decision.
 ///
-/// The learned scorer is production (Oběhy's `learned-v1.json`); authored posts stay on the
+/// The learned scorer is production (Oběhy's `learned-v2.json`); authored posts stay on the
 /// heuristic path (verdict Q4).
 pub const POST_R100: Rule = Rule {
     id: "POST-R100",

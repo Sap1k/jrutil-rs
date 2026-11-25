@@ -46,7 +46,7 @@ Sources read in full:
 - Oběhy (read-only): `repo/src/obehy/national_jdf.py` (build arguments, policy choice),
   `osm_snapshot.py` (filters, demand envelope, 560–910), `PROGRESS.md` (post-estimator status
   and timings), `STATIC_PIPELINE.md`, `BASE_PLAN.md` (section 6), `AGENTS.md`.
-- Data: `repo/src/obehy/data/post-inference/learned-v1.json` (the production policy document),
+- Data: `repo/src/obehy/data/post-inference/learned-v2.json` (the production policy document),
   the first lines of `jrunify-ext-geodata/registry/posts.csv` and the registry README section,
   the golden manifest `work/jrutil-rs-golden/jdf/out/fs-ref/bundle-reg/manifest.json`.
 - Rust reference (unchanged): `jr-jdf/src/fixed.rs` (`PostCandidate`), `fix/posts.rs`,
@@ -419,7 +419,7 @@ is intentionally rejected; recapture v2".
 Two accepted forms (`loadPolicyWithScorer`): a v2 policy (`schema_version: 2`, heuristic scorer),
 or a v3 document `{"schema_version": 3, "policy": {…v2…}, "scorer": {"kind": "heuristic" |
 "learned", "model": {…}}}`. `documentSha256 = sha(file text)`. No path → the compiled default
-`conservativeRoutedV4` with the heuristic. Oběhy passes `learned-v1.json` whenever estimated posts
+`conservativeRoutedV4` with the heuristic. Oběhy passes `learned-v2.json` whenever estimated posts
 are on (`national_jdf.effective_post_inference_policy`), whose `policy` equals the compiled
 default.
 
@@ -492,7 +492,7 @@ names distinct; stage-2 features exactly stage-1 features followed by `reverse_m
 has_reverse, same_movement_mass, has_same_movement, same_next_mass, same_previous_mass`;
 thresholds finite and ≥ 0 (`area` read only when it is a number).
 
-Stage-1 features in production order (`learned-v1.json` = Python `FEATURE_COLUMNS`, frozen
+Stage-1 features in production order (`learned-v2.json` = Python `FEATURE_COLUMNS`, frozen
 2026-09-28): `side, alignment, proximity, corridor_distance, routed_fit,
 routed_excess_metres_capped, excess_minus_context_min, eligible, has_local_ref, is_bay,
 post_support, post_support_deficit, is_tram, is_trolleybus, anchor_previous_missing,

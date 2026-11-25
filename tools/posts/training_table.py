@@ -17,7 +17,8 @@ follow the scorer README (`jrutil/scripts/post-scorer`):
   a nearest candidate between 20 and 35 m, or every candidate beyond 300 m, leaves the context
   unlabelled.
 
-The weight of a context is its number of published calls. The baseline columns are the
+The weight of a context is its number of published calls; `region` is the labelling feed
+(`pid-gtfs`, `ids-jmk-gtfs`). The baseline columns are the
 decision the shipped model made (the `post_decisions` report), so `post_scorer.model` compares
 a new model with it on the same stops. Authored contexts are left out: they are not scored.
 
@@ -110,7 +111,7 @@ def main():
     for context, counter in posts.items():
         post, count = counter.most_common(1)[0]
         if count / sum(counter.values()) >= MAJORITY_SHARE:
-            majority[context] = where[post]
+            majority[context] = post
 
     labelled, y = [], []
     candidates_of = collections.defaultdict(list)
@@ -122,11 +123,13 @@ def main():
     is_correct = [0] * rows.height
     no_correct = [False] * rows.height
     counts = collections.Counter()
+    region = [None] * rows.height
     for context, members in candidates_of.items():
-        post = majority.get(context)
-        if post is None:
+        label = majority.get(context)
+        if label is None:
             counts["unlabelled: no majority post"] += 1
             continue
+        post = where[label]
         distances = [metres(position, post) for _, position in members]
         nearest = min(distances)
         if nearest > ALIGNMENT_ERROR_METRES:
@@ -140,6 +143,7 @@ def main():
             is_labelled[index] = True
             is_correct[index] = int(distance <= CORRECT_METRES)
             no_correct[index] = nearest > AMBIGUOUS_METRES
+            region[index] = label.split(":")[1]
 
     # The shipped model's decisions as the baseline.
     baseline = decisions.select(
@@ -157,6 +161,7 @@ def main():
             pl.Series("labelled", is_labelled),
             pl.Series("y", is_correct),
             pl.Series("no_correct_candidate", no_correct),
+            pl.Series("region", region, dtype=pl.String),
             pl.col("context_id").replace_strict(dict(weights), default=1).cast(pl.Float64).alias("weight"),
         )
         .join(baseline, on="context_id", how="left")

@@ -1,7 +1,7 @@
 # Constants of the post estimator's evaluator (crates/jr-posts/src/evaluate,
 # jr_posts::evaluate::Constants). F# JrUtil compiled these in; rule IDs are those of
 # docs/rules/posts.md. The per-build thresholds are not here: they are the policy document
-# (policy v2 + learned model, e.g. Oběhy's learned-v1.json), versioned with its model (POST-R004).
+# (policy v2 + learned model, e.g. Oběhy's learned-v2.json), versioned with its model (POST-R004).
 # The [learned] values are part of the shipped model's contract: they must equal the values the
 # model was trained with (jrutil/scripts/post-scorer), so change them only with a new model.
 

@@ -41,7 +41,7 @@
 //!
 //! [jdf.posts]                           # optional: estimate boarding posts
 //! routing = "osm/jdf-transit-routing-demand.osm.pbf"
-//! policy = "post-inference/learned-v1.json"
+//! policy = "post-inference/learned-v2.json"
 //! evidence = "out/posts-evidence"       # optional: write the evidence pack
 //! reports = "out/posts-reports"         # optional: the review reports, one CSV each
 //! cache = "cache/routing"               # optional: routed contexts kept between builds

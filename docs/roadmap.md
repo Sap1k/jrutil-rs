@@ -106,20 +106,28 @@ One phase at a time; each phase lands as one or two coarse commits.
    correct 72.43 % → 73.51 % (+17,734 calls), wrong 3.15 % → 3.19 %, no estimate 20.30 % →
    19.19 %; the wrong share of estimated calls stays 3.95 %.
 
-   **Retraining: done, not adopted.** The training table now comes from the Rust estimator
-   (POST-R141, verdict Q14): `[jdf.posts] training = true` reports the scorer's rows exactly as
-   scored and each context's calls; `tools/posts/training_table.py` labels them from an overlay
-   package (the scorer README's rules) and adds the shipped model's decisions as the baseline;
-   `tools/posts/train_scorer.py` trains with `post_scorer` (folds 2-4 by stop), calibrates on
-   fold 1 and compares on fold 0, and writes a policy only when the new model has more correct
-   decisions and no higher wrong share. Run on the golden slice captured without PID.csv,
-   MPVNet_PID.csv and IDSJMK.csv (the leakage guard): 69,244 labelled contexts. Calibrated to
-   the shipped model's precision on fold 1, the retrained model on the test fold: 11,158 of
-   12,427 published correct (0.898) against the shipped 9,961 of 10,575 (0.942); worse at
-   complex stops (0.83 against 0.94) and stops with bays (0.73 against 0.86). It is not better
-   by the bar, so `learned-v1.json` stays. More regions' labels (the original model was trained
-   on national regional captures) are the way to a better model; the reviewed list (Q11) goes
-   with that next model.
+   **Retraining: done, `learned-v2` shipped (2026-11-25).** The training table comes from the
+   Rust estimator (POST-R141, verdict Q14): `[jdf.posts] training = true` reports the scorer's
+   rows exactly as scored and each context's calls; `tools/posts/training_table.py` labels them
+   from an overlay package (the scorer README's rules) and adds the shipped model's decisions as
+   the baseline; `tools/posts/train_scorer.py` trains and judges.
+   - **Data:** a national capture without PID.csv, MPVNet_PID.csv and IDSJMK.csv (the leakage
+     guard), labelled from the national package with both overlays: 149,495 labelled contexts
+     (PID and IDS JMK).
+   - **Split:** stops in five folds by `stable_fold`, as `learned-v1` was made: folds 1-4 train,
+     fold 0 is the test, so neither model saw a test stop. Thresholds come from out-of-fold
+     scores on folds 1-4, calibrated per stratum to `learned-v1`'s precision on those stops
+     (fitted there, so in its favour). Both models are judged on fold 0 the same way: every
+     published post counts (area decisions too) and counts are per call.
+   - **Result on fold 0:** 306,600 of 323,340 published calls correct (0.948) against
+     298,498 of 315,944 (0.945): +8,102 correct, wrong share 5.18 % against 5.52 %. Better in both
+     regions, at complex stops (0.944 against 0.935) and stops with bays (0.907 against 0.884).
+   - **Golden slice** (catalogues kept, every labelled call overlay-bound in production): correct
+     73.51 % → 74.36 %, wrong 3.19 % → 3.50 %. Not the deciding measure: there the regional
+     catalogues are candidates and production publishes the overlay's real post.
+   - A first attempt on the golden slice alone (69,244 contexts) was not better; it was also
+     judged against `learned-v1` thresholds calibrated on the test fold. The reviewed list (Q11)
+     remains for a later model.
 7. *Optional, not scheduled:* M5 (reading the raw OSM snapshot) and M6 (SŽ přípoje XLSX, OSM
    track→platform, foreign rail GTFS).
 
