@@ -989,6 +989,11 @@ CZPTT sidecars are byte-identical`. **Proposed verdict:** drop (AGENTS rule 8: n
   (`nad_boarding_point.platform_code`, `nad_boarding_point.description`).
 - **Diagnostic:** none.
 - **Proposed verdict:** port.
+- **Changed 2026-11-26:** tracks publish no `platform_code` (policy `tracks.public_code = false`).
+  CZPTT subsidiaries are operational track markings, not the platforms passengers are shown, so
+  publishing them misled. SŽ assigns platforms statically from the next timetable (GVD 2027);
+  platform codes return once tracks are mapped to them. Tracks stay boarding points and keep
+  their `sr70:track` keys; the NAD `BUS` point is unchanged.
 
 #### CZPTT-R055 — Stop deduplication and order
 - **What:** rows are stably sorted with description-bearing rows first, deduplicated by id (first

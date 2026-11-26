@@ -15,6 +15,14 @@ a = "^$"
 max = 9556
 
 [[category]]
+name = "track-codes-unpublished"
+matches = "location.changed.public_code"
+reason = "CZPTT tracks are operational markings, not the platforms passengers see; their codes are not published until a track-to-platform mapping exists (R054, policy tracks.public_code). The NAD BUS point keeps its code."
+key = ":platform:"
+b = "^$"
+max = 3161
+
+[[category]]
 name = "unused-operational-points"
 matches = "location.missing"
 reason = "F# listed every railway point of an accepted path, including points no trip part calls at (inside a replacement-bus part, or past a dropped part). A place nothing refers to is not published."

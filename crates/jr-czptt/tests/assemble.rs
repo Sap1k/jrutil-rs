@@ -137,14 +137,35 @@ fn r053_a_place_takes_the_catalogue_name_else_its_first_source_name() {
 }
 
 #[test]
-fn r054_a_track_shows_its_name_and_a_bus_boards_at_the_bus_point() {
-    let mut named = track(stop("57076", "08:00:00"), "12");
-    named.subsidiary.as_mut().expect("track").name = Some("12S".into());
-    let (timetable, _) = timetable_of(support::timetable(vec![named, stop("57016", "08:20:00")]));
+fn r054_a_track_shows_its_name_only_when_published_and_a_bus_boards_at_the_bus_point() {
+    let message = || {
+        let mut named = track(stop("57076", "08:00:00"), "12");
+        named.subsidiary.as_mut().expect("track").name = Some("12S".into());
+        support::timetable(vec![named, stop("57016", "08:20:00")])
+    };
+    let (timetable, _) = timetable_of(message());
     let track = point(&timetable, "czptt:stop:CZ:57076:platform:12");
-    assert_eq!(track.public_code.as_deref(), Some("12S"));
+    assert_eq!(
+        track.public_code, None,
+        "track codes are not published by default"
+    );
     assert_eq!(track.source_code.as_deref(), Some("12"));
     assert_eq!(track.source_name.as_deref(), Some("12S"));
+
+    let mut policy = jr_czptt::Policy::builtin();
+    policy.tracks.public_code = true;
+    let mut diagnostics = jr_model::Diagnostics::new();
+    let compiled = jr_czptt::compile(
+        vec![annual(1, message())],
+        &support::catalog(),
+        &PointNames::new(),
+        2026,
+        &policy,
+        &mut diagnostics,
+    )
+    .expect("compiles");
+    let track = point(&compiled.timetable, "czptt:stop:CZ:57076:platform:12");
+    assert_eq!(track.public_code.as_deref(), Some("12S"));
 
     let (timetable, _) = timetable_of(bus_fixture());
     let bus_point = point(&timetable, "czptt:stop:CZ:57050:platform:BUS");

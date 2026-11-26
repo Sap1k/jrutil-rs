@@ -84,6 +84,12 @@ minimum_calls = 2
 [places]
 timezone = "Europe/Prague"
 
+# CZPTT-R054: CZPTT tracks are operational markings, not the platforms passengers see, so their
+# names are not published until a track-to-platform mapping exists (SŽ assigns platforms
+# statically from the 2027 timetable). The tracks stay boarding points with their sr70:track keys.
+[tracks]
+public_code = false
+
 # CZPTT-R054, R055: where a replacement bus calls at a station.
 [replacement_bus_point]
 public_code = "BUS"

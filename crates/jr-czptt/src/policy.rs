@@ -20,6 +20,7 @@ pub struct Policy {
     pub route_types: RouteTypes,
     pub parts: PartsPolicy,
     pub places: PlacesPolicy,
+    pub tracks: TracksPolicy,
     pub replacement_bus_point: ReplacementBusPoint,
     pub agencies: AgenciesPolicy,
     pub routes: RoutesPolicy,
@@ -161,6 +162,13 @@ pub struct PartsPolicy {
 #[serde(deny_unknown_fields)]
 pub struct PlacesPolicy {
     pub timezone: Box<str>,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TracksPolicy {
+    /// Whether a track's name (else code) is published as its public code.
+    pub public_code: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]

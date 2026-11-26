@@ -20,11 +20,12 @@ pub(crate) const R053: Rule = Rule {
     summary: "A place is named by the catalogue, else by its first source name",
 };
 
-/// The source names a track by code and sometimes by a friendlier name; a replacement bus
-/// stops somewhere at the station that the source does not say.
+/// The source names a track by code and sometimes by a friendlier name, but either is an
+/// operational marking, not the platform passengers are shown; a replacement bus stops somewhere
+/// at the station that the source does not say.
 pub(crate) const R054: Rule = Rule {
     id: "CZPTT-R054",
-    summary: "A track shows its name, else its code; a replacement bus boards at the station's BUS point",
+    summary: "A track shows its name, else its code, only where policy publishes track codes; a replacement bus boards at the station's BUS point",
 };
 
 /// The BUS point's ID equals that of a track coded `BUS`; none exists, so such a track shares
@@ -130,7 +131,7 @@ impl Builder<'_> {
             return Some(existing);
         }
         let mut point = Self::new_point(place, id, BoardingPointKind::Track);
-        point.public_code = Some(public.into());
+        point.public_code = self.policy.tracks.public_code.then(|| public.into());
         point.source_code = Some(subsidiary.code.clone());
         point.source_name = subsidiary.name.clone();
         Some(self.point(point))
