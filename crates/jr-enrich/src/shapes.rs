@@ -38,17 +38,21 @@ pub const SERVING_R030: Rule = Rule {
 };
 
 /// A trip's match points are its calls in running order, railway points included: the
-/// boarding point's position if exact, else the place's if exact, else the call is skipped
-/// (a skipped passenger call is counted as `estimated_calls_skipped`). Coordinates are rounded
-/// to seven decimals; a call without passenger service is a waypoint. Trips with the same class
-/// and match points share a pattern, keyed by the first 20 hex digits of the SHA-256 of the
-/// class and the points (section 6.3).
+/// boarding point's position if exact or placed by the post estimator, else the place's if
+/// exact, else the call is skipped (a skipped passenger call is counted as
+/// `estimated_calls_skipped`). Coordinates are rounded to seven decimals; a call without
+/// passenger service is a waypoint. Trips with the same class and match points share a
+/// pattern, keyed by the first 20 hex digits of the SHA-256 of the class and the points
+/// (section 6.3).
 ///
-/// An estimated position is a guess along the route; matching a shape through it would bend
-/// the shape to the guess. The pattern key is content, so the companion's cache survives runs.
+/// An estimated position along the route (route time, route end) is a guess; matching a shape
+/// through it would bend the shape to the guess. An estimated post is not: the estimator only
+/// chooses among real candidates, and the place's own position, a centre between its posts,
+/// can lie off the road and pull the shape into a loop through side streets. The pattern key
+/// is content, so the companion's cache survives runs.
 pub const SERVING_R031: Rule = Rule {
     id: "SERVING-R031",
-    summary: "match points: exact boarding point, else exact place, else skipped; 7 decimals",
+    summary: "match points: exact or estimator-placed boarding point, else exact place, else skipped; 7 decimals",
 };
 
 /// A pattern is accepted when the companion wrote a status row and at least one shape point

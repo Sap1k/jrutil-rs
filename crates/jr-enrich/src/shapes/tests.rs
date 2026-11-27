@@ -1,7 +1,7 @@
 use jr_model::identity::czptt;
 use jr_model::timetable::{
     Agency, Boarding, BoardingPoint, BoardingPointKind, Call, CoordSource, Mode, Place, PlaceKind,
-    Position, Route, TimetableKind, Trip, Tristate,
+    Position, Precision, Route, TimetableKind, Trip, Tristate,
 };
 use jr_model::{
     BoardingPointId, DateSet, Feed, Horizon, OptTime, PlaceId, Precedence, RouteId, TripId, apply,
@@ -262,6 +262,60 @@ fn serving_r030_r031_patterns_csv_keeps_railway_points_and_skips_estimated_calls
         summary.not_routed.unsupported_mode,
         BTreeMap::from([("cable".to_owned(), 1)])
     );
+}
+
+#[test]
+fn serving_r031_estimated_posts_are_match_points_not_their_places_centre() {
+    let mut f = Fixture::new();
+    let a = f.station("A", exact(50.0, 14.0));
+    // The place's exact position is a centre between its posts, off the road.
+    let stop = f.station("L", exact(50.621_8, 13.757_2));
+    let chosen = f.track(
+        stop,
+        Some(Position::estimated(
+            Coord::new(13.757_619, 50.621_363_6),
+            CoordSource::PostEstimate,
+        )),
+    );
+    let area = f.track(
+        stop,
+        Some(Position {
+            coord: Coord::new(13.758, 50.621_4),
+            precision: Precision::Approximate,
+            source: Some(CoordSource::PostEstimate),
+        }),
+    );
+    // Estimated along the route: still a guess, the place's position is taken.
+    let guessed = f.track(stop, estimated(50.63, 13.76));
+    let b = f.station("B", exact(50.1, 14.1));
+    f.rail_trip(
+        "t1",
+        &[(a, None, true), (stop, Some(chosen), true), (b, None, true)],
+    );
+    f.rail_trip(
+        "t2",
+        &[(a, None, true), (stop, Some(area), true), (b, None, true)],
+    );
+    f.rail_trip(
+        "t3",
+        &[
+            (a, None, true),
+            (stop, Some(guessed), true),
+            (b, None, true),
+        ],
+    );
+
+    let plan = Plan::of(&f.t);
+    let middle: Vec<Coord> = plan
+        .patterns
+        .iter()
+        .map(|pattern| pattern.points[1].coord)
+        .collect();
+    assert_eq!(plan.patterns.len(), 3);
+    assert!(middle.contains(&Coord::new(13.757_619, 50.621_363_6)));
+    assert!(middle.contains(&Coord::new(13.758, 50.621_4)));
+    assert!(middle.contains(&Coord::new(13.757_2, 50.621_8)));
+    assert_eq!(plan.summary().estimated_calls_skipped, 0);
 }
 
 #[test]

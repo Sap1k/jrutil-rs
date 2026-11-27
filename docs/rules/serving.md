@@ -833,8 +833,9 @@ route-stop pass, before the GTFS projection. Never fails the build.
   in `not_routed.unsupported_mode[mode]`.
 - A location is *exact* when `coordinate_precision = "exact"` and both coordinates present.
 - Match points of a trip, all calls in sequence order (passenger and railway points): the
-  boarding point's position if exact, else the location's if exact, else skipped (a skipped
-  passenger call counts in `estimated_calls_skipped`). Coordinates `Math.Round(x, 7)`;
+  boarding point's position if exact (Rust, SERVING-R031: or placed by the post estimator),
+  else the location's if exact, else skipped (a skipped passenger call counts in
+  `estimated_calls_skipped`). Coordinates `Math.Round(x, 7)`;
   `waypoint = not passenger_service`. Each point remembers its call's sequence.
 - Patterns = distinct (class, points) by pattern id (6.3); a trip with zero match points still
   gets a pattern (id of the class alone).

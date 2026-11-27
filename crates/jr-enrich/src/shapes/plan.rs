@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use jr_model::timetable::{Call, Mode, Position, Precision};
+use jr_model::timetable::{Call, CoordSource, Mode, Position, Precision};
 use jr_model::{Coord, Timetable, TripId};
 use sha2::{Digest, Sha256};
 
@@ -187,8 +187,19 @@ fn match_point(timetable: &Timetable, call: &Call) -> Option<Coord> {
             .filter(|position| position.precision == Precision::Exact)
             .map(|position| position.coord)
     };
+    // A post the estimator chose sits on a candidate the road reaches (a mapped platform, a
+    // catalogue point, an area's centre); the place's position is often off the road between
+    // its posts.
+    let usable = |position: Option<Position>| {
+        position
+            .filter(|position| {
+                position.precision == Precision::Exact
+                    || position.source == Some(CoordSource::PostEstimate)
+            })
+            .map(|position| position.coord)
+    };
     call.boarding_point
-        .and_then(|point| exact(timetable.boarding_points[point].position))
+        .and_then(|point| usable(timetable.boarding_points[point].position))
         .or_else(|| exact(timetable.places[call.place].position))
 }
 
